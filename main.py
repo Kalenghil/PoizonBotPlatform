@@ -354,8 +354,8 @@ def display_menu(id):
 
 def send_ordertype_prompt(id):
     reply = json.dumps({'inline_keyboard': [
-            [{'text': 'Кроссовки', 'callback_data': 'sneaker'}, {'text': 'Ботинки', 'callback_data': 'boot'}],
-            [{'text': 'Пуховик', 'callback_data': 'winterJacket'}, {'text': 'Куртка', 'callback_data': 'jacket'}],
+            [{'text': 'Кроссовки', 'callback_data': 'sneaker'}, {'text': 'Обувь', 'callback_data': 'boot'}],
+            [{'text': 'Пуховик', 'callback_data': 'winterJacket'}, {'text': 'Верхняя одежда', 'callback_data': 'jacket'}],
             [{'text': 'Одежда', 'callback_data': 'cotton'}, {'text': 'Ноутбук', 'callback_data': 'laptop'}],
             [{'text': 'Смартфон', 'callback_data': 'smartphone'}, {'text': 'Аксессуар/Парфюмерия', 'callback_data': 'accessory'}],
         ]
