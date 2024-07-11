@@ -212,12 +212,12 @@ def add_admin(id):
 if mainimage_url is not None:
     download_image(mainimage_url, "main")
 else:
-    copy_file("./main.png", "/tmp/main.png")
+    copy_file("./main_monv.jpg", "/tmp/main_monv.jpg")
 
 if aboutimage_url is not None:
     download_image(aboutimage_url, "about")
 else:
-    copy_file("./about.png", "/tmp/about.png")
+    copy_file("./about_monv.jpg", "/tmp/about_monv.jpg")
 
 if admin_id is not None:
     add_admin(admin_id)
@@ -348,7 +348,7 @@ def display_menu(id):
         "parse_mode": "markdown",
         "reply_markup": reply
     }
-    resp = requests.post(url_image+(f"?chat_id={id}"), files={'photo': open("/tmp/main.png", 'rb')}, params=mes_params)
+    resp = requests.post(url_image+(f"?chat_id={id}"), files={'photo': open("/tmp/main_monv.jpg", 'rb')}, params=mes_params)
     return resp.content
 
 
@@ -614,15 +614,14 @@ def send_faq(id):
 
 def send_about(id):
     reply = json.dumps({'inline_keyboard': [
-            [{'text': "👉🏼 Наша группа в ВК", 'url': str(vk_link)}],
-            [{'text': "👉🏼 Наша группа в TG", 'url': str(tg_link)}]
+            [{'text': "👉🏼 Наша группа в TG", 'url': str(tg_link)}],
         ]
     })
     mes_params = {
         "caption": str(about_text),
         "reply_markup": reply
     }
-    resp = requests.post(url_image+(f"?chat_id={id}"), files={'photo': open("/tmp/about.png", 'rb')}, params=mes_params)
+    resp = requests.post(url_image+(f"?chat_id={id}"), files={'photo': open("/tmp/about_monv.jpg", 'rb')}, params=mes_params)
     return resp.content
 
 def send_contact(id):
@@ -635,7 +634,7 @@ def send_contact(id):
         "caption": str(info_text),
         "reply_markup": reply
     }
-    resp = requests.post(url_image+(f"?chat_id={id}"), files={'photo': open("/tmp/about.png", 'rb')}, params=mes_params)
+    resp = requests.post(url_image+(f"?chat_id={id}"), files={'photo': open("/tmp/about_monv.jpg", 'rb')}, params=mes_params)
     return resp.content
 
 def display_order(id, order):
@@ -865,7 +864,7 @@ def handle_url(mess):
     curr_state = get_user(chat_id)["state"]
     userdata = get_userfile(chat_id)
     if curr_state == "ORDER_LINK":
-        if(check_regex('https:\/\/dw4\.co\/t\/A\/[a-zA-Z0-9]{8,10}$', mess["text"]) or check_regex('https:\/\/dwz\.cn\/[a-zA-Z0-9]{8,10}$', mess["text"])):
+        if (True):  # link regexes, leave them for future #if(check_regex('https:\/\/dw4\.co\/t\/A\/[a-zA-Z0-9]{8,10}$', mess["text"]) or check_regex('https:\/\/dwz\.cn\/[a-zA-Z0-9]{8,10}$', mess["text"])):
             modify_userfile(chat_id, str(mess["text"]), "link", "order")
             resp = send_ordersize_prompt(chat_id)
             change_user_state(chat_id, "ORDER_SIZE")
