@@ -1,53 +1,12 @@
-import logging
-import os
-
-import database_queries
-
-
-def proceed_bool_env(env):
-    if env.lower() in ['true', '1']: return True
-    elif env.lower() in ['false', '0']: return False
-    else: return None
-
-envs = os.environ
-def proceed_env(env_name, default_value):
-    if env_name not in envs:
-        return default_value
-    return envs[env_name]
-
-minio_access_key = proceed_env('MINIO_ACCESS_KEY', 'minioadmin')
-minio_secret_key = proceed_env('MINIO_ACCESS_KEY', 'minioadmin')
-
-mysql_root_password = proceed_env('MYSQL_ROOT_PASSWORD', 'rootpassw')
-mysql_database_name = proceed_env('MYSQL_DATABASE', 'monvisium_db')
-
-token = envs['TOKEN'] if 'TOKEN' in envs else None
-about_text = envs['ABOUT'] if 'ABOUT' in envs else "О нас ⚠️"
-info_text = envs['INFO'] if 'INFO' in envs else "Чат и отзывы 💬"
-items_text = envs['ITEMS'] if 'ITEMS' in envs else "items are here - https://google.com"
-mainmenu_text = envs['MAINMENU'] if 'MAINMENU' in envs else "Проект poizonbot"
-adminpanel_username = envs['USERNAME'] if 'USERNAME' in envs else "admin"
-adminpanel_password = envs['PASSWORD'] if 'PASSWORD' in envs else "@poizonbotthebest))1234"
-mainimage_url = envs['MAINIMG'] if 'MAINIMG' in envs else None
-aboutimage_url = envs['ABOUTIMG'] if 'ABOUTIMG' in envs else None
-tg_link = envs['TGLINK'] if 'TGLINK' in envs else "https://www.youtube.com/watch?v=dQw4w9WgXcQ" # установить ссылку на репозиторий бота
-review_link = envs['REVIEWLINK'] if 'REVIEWLINK' in envs else "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-chat_link = envs['CHATLINK'] if 'CHATLINK' in envs else "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-admin_id = envs['ADMINID'] if 'ADMINID' in envs else None
-use_extended_formula = proceed_bool_env(envs['EXTFORMULA']) if 'EXTFORMULA' in envs and proceed_bool_env(envs['EXTFORMULA']) is not None else True
-
-base_url = "https://api.telegram.org/bot"
-
-url=f"{base_url}{token}/sendMessage"
-url_image=f"{base_url}{token}/sendPhoto"
 
 from EmojiCaptcha import EmojiCaptcha
+from envs import *
+from database import *
+
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from typing import Optional
 import minio
-import mysql
-from mysql.connector.pooling import PooledMySQLConnection, MySQLConnectionAbstract
 import requests
 import secrets
 import shutil
@@ -57,23 +16,11 @@ import re
 from pydantic import BaseModel
 
 
-def create_tables():
-    conn = db_get_connection()
-    if conn is None:
-        raise IOError
-    try:
-        cursor = conn.cursor()
-        cursor.execute(database_queries.create_user_table)
-        conn.commit()
-        cursor.execute(database_queries.create_order_table)
-        conn.commit()
-    except mysql.connector.Error as err:
-        print(f"Error creating table: {err}")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+base_url = "https://api.telegram.org/bot"
+
+url=f"{base_url}{token}/sendMessage"
+url_image=f"{base_url}{token}/sendPhoto"
+
 
 def create_buckets(client: minio.Minio) -> None:
     if not client.bucket_exists(user_bucket):
@@ -226,7 +173,7 @@ def download_image(url, filename):
         copy_file(f"./{filename}.png", f"/tmp/{filename}.png")
 
 def add_admin(id):
-    user = user_db.put({
+    user = db_add_user({
         "key": str(id),
         "state": "MAIN_MENU",
         "lvl": "admin"
@@ -270,105 +217,6 @@ def minio_put_userfile(filename: str, contents: str):
 
 # ---------------------------------- DATABASE FUNCTIONS --------------------------------
 
-def db_get_connection() -> PooledMySQLConnection | MySQLConnectionAbstract | None:
-    try:
-        conn = mysql.connector.connect(
-            host='localhost:3306',
-            user='root',
-            password=mysql_root_password,
-            database=mysql_database_name,
-        )
-    except mysql.connector.Error as err:
-        print(f'Error connecting to database; {err}')
-        return None
-    else:
-        return conn
-
-def db_add_user(user: dict[str, str]):
-    try:
-        conn = db_get_connection()
-        cursor = conn.cursor()
-
-        values = (user['id'], user['level'], user['state'])
-        cursor.execute(database_queries.add_user, values)
-        conn.commit()
-    except mysql.connector.Error as err:
-        print(f"Error adding user: {err}")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-
-
-def db_get_user(id: str) -> dict[str, any] | None:
-    try:
-        conn = db_get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(database_queries.get_user, (id,))
-        result = cursor.fetchone()
-        if result:
-            user_data = {
-                'id': result[0],
-                'level': result[1],
-                'state': result[2]
-            }
-            return user_data
-        else:
-            return None
-
-    except mysql.connector.Error as err:
-        print(f"Error retrieving user: {err}")
-        return None
-
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-
-
-def db_add_order(order_data: dict[str, any]):
-    try:
-        conn = db_get_connection()
-        cursor = conn.cursor()
-
-        data_json = json.dumps(order_data['data'])
-        values = (order_data['id'], data_json, False, order_data['user_id'])
-        cursor.execute(database_queries.add_user, values)
-        conn.commit()
-    except mysql.connector.Error as err:
-        print(f"Error adding user: {err}")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-
-
-
-def db_confirm_order(order_id):
-    try:
-        # Connect to the MySQL database
-        conn = db_get_connection()
-        cursor = conn.cursor()
-
-        # Update the 'is_confirmed' field of the order
-        cursor.execute(database_queries.confirm_order, (order_id,))
-        conn.commit()
-
-        print(f"Order with ID {order_id} has been marked as confirmed.")
-
-    except mysql.connector.Error as err:
-        print(f"Error confirming order: {err}")
-
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-
 
 # ------------------------------- DATA CONTROL FUNCTIONS -------------------------------
 
@@ -406,14 +254,12 @@ def get_user(id):
 
 def change_user_state(id, state):
     user_old = get_user(id)
-    user = user_db.put({
-        "state": state,
-        "lvl": user_old["lvl"]
-    }, str(id))
+    user = db_promote_user(id)
+
     return user
 
 def get_admins():
-    admins = user_db.fetch({"lvl": "admin"})
+    admins = get_admin_users()
     return admins if admins else None
 
 def add_order(id, type, link, size, price, fio, adress, number):
@@ -441,19 +287,7 @@ def confirm_order(id, key):
     if order_from_all_orders is not None:
         send_confirm_prompt(order_from_all_orders["id"], order_from_all_orders)
         send_text(id, f"Заказ номер `{key}` подтверждён. Спасибо!")
-        all_orders.delete(str(key))
-        confirmed_order = confirmed_orders.put({
-            "id": str(order_from_all_orders["id"]),
-            "data": {
-                "product_type": order_from_all_orders["data"]["product_type"],
-                "product_link": order_from_all_orders["data"]["product_link"],
-                "product_size": order_from_all_orders["data"]["product_size"],
-                "price": order_from_all_orders["data"]["price"],
-                "fio": order_from_all_orders["data"]["fio"],
-                "ship_to": order_from_all_orders["data"]["ship_to"],
-                "phone_number": order_from_all_orders["data"]["phone_number"]
-            }
-        })
+        db_confirm_order(key)
     else:
         send_text(id, f"Заказ номер `{key}` уже обработан либо не найден.")
     return confirmed_order
@@ -463,16 +297,16 @@ def decline_order(id, key):
     deleted_order = None
     if parsed_order is not None:
         send_decline_prompt(parsed_order["id"], parsed_order)
-        deleted_order = all_orders.delete(str(key))
+        deleted_order = db_delete_order(id)
     content = send_text(id, f"Заказ номер `{key}` отклонён. Спасибо!")
     return content, deleted_order
 
 def fetch_orders(filter: dict = None):
-    orders = all_orders.fetch(filter)
+    orders = db_get_all_orders()
     return orders if orders else None
 
 def fetch_confirmed_orders(filter: dict = None):
-    confirm_orders = confirmed_orders.fetch(filter)
+    confirm_orders = db_get_confirmed_orders()
     return confirm_orders if confirm_orders else None
 
 # ------------------------------- MESSAGE FUNCTIONS -------------------------------
