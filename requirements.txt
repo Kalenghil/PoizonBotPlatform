@@ -1,7 +1,7 @@
 fastapi
 requests
-deta
 Pillow
 image
 python-multipart
-
+mysql-connector-python
+minio

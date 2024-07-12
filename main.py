@@ -1,4 +1,8 @@
+import logging
 import os
+
+import database_queries
+
 
 def proceed_bool_env(env):
     if env.lower() in ['true', '1']: return True
@@ -6,17 +10,26 @@ def proceed_bool_env(env):
     else: return None
 
 envs = os.environ
+def proceed_env(env_name, default_value):
+    if env_name not in envs:
+        return default_value
+    return envs[env_name]
+
+minio_access_key = proceed_env('MINIO_ACCESS_KEY', 'minioadmin')
+minio_secret_key = proceed_env('MINIO_ACCESS_KEY', 'minioadmin')
+
+mysql_root_password = proceed_env('MYSQL_ROOT_PASSWORD', 'rootpassw')
+mysql_database_name = proceed_env('MYSQL_DATABASE', 'monvisium_db')
+
 token = envs['TOKEN'] if 'TOKEN' in envs else None
-collection_token = envs['COLTOKEN'] if 'COLTOKEN' in envs else "None"
-about_text = envs['ABOUT'] if 'ABOUT' in envs else "powered by poizonbot"
-info_text = envs['INFO'] if 'INFO' in envs else "info about poizonbot"
+about_text = envs['ABOUT'] if 'ABOUT' in envs else "О нас ⚠️"
+info_text = envs['INFO'] if 'INFO' in envs else "Чат и отзывы 💬"
 items_text = envs['ITEMS'] if 'ITEMS' in envs else "items are here - https://google.com"
 mainmenu_text = envs['MAINMENU'] if 'MAINMENU' in envs else "Проект poizonbot"
 adminpanel_username = envs['USERNAME'] if 'USERNAME' in envs else "admin"
 adminpanel_password = envs['PASSWORD'] if 'PASSWORD' in envs else "@poizonbotthebest))1234"
 mainimage_url = envs['MAINIMG'] if 'MAINIMG' in envs else None
 aboutimage_url = envs['ABOUTIMG'] if 'ABOUTIMG' in envs else None
-vk_link = envs['VKLINK'] if 'VKLINK' in envs else "https://www.youtube.com/watch?v=dQw4w9WgXcQ" # установить ссылку на репозиторий бота
 tg_link = envs['TGLINK'] if 'TGLINK' in envs else "https://www.youtube.com/watch?v=dQw4w9WgXcQ" # установить ссылку на репозиторий бота
 review_link = envs['REVIEWLINK'] if 'REVIEWLINK' in envs else "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 chat_link = envs['CHATLINK'] if 'CHATLINK' in envs else "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -32,7 +45,9 @@ from EmojiCaptcha import EmojiCaptcha
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from typing import Optional
-from deta import Deta
+import minio
+import mysql
+from mysql.connector.pooling import PooledMySQLConnection, MySQLConnectionAbstract
 import requests
 import secrets
 import shutil
@@ -41,18 +56,39 @@ import json
 import re
 from pydantic import BaseModel
 
-if (collection_token != "None") and (collection_token is not None):
-    deta = Deta(collection_token)
-else:
-    deta = Deta()
-user_db = deta.Base('UserDB')
-all_orders = deta.Base('AllOrders')
-confirmed_orders = deta.Base('ConfirmedOrders')
-user_tmp = deta.Drive("usertmp")
-config_storage = deta.Drive('confstor')
+
+def create_tables():
+    conn = db_get_connection()
+    if conn is None:
+        raise IOError
+    try:
+        cursor = conn.cursor()
+        cursor.execute(database_queries.create_user_table)
+        conn.commit()
+        cursor.execute(database_queries.create_order_table)
+        conn.commit()
+    except mysql.connector.Error as err:
+        print(f"Error creating table: {err}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+def create_buckets(client: minio.Minio) -> None:
+    if not client.bucket_exists(user_bucket):
+        client.make_bucket(user_bucket)
 
 app = FastAPI()
 security = HTTPBasic()
+minio_client = minio.Minio(
+    'localhost:9000',
+    access_key=minio_access_key,
+    secret_key=minio_secret_key,
+)
+user_bucket = 'users'
+config_bucket = 'config'
+create_tables()
 
 emojis = ['🃏', '🎤', '🎥', '🎨', '🎩', '🎬', '🎭', '🎮', '🎯', '🎱', '🎲', '🎷', '🎸', '🎹', '🎾', '🏀', '🏆', '🏈', '🏉', '🏐', '🏓', '💠', '💡', '💣', '💨', '💸', '💻', '💾', '💿', '📈', '📉', '📊', '📌', '📍', '📎', '📏', '📐', '📞', '📟', '📠', '📡', '📢', '📣', '📦', '📹', '📺', '📻', '📼', '📽', '🖥', '🖨', '🖲', '🗂', '🗃', '🗄', '🗜', '🗝', '🗡', '🚧', '🚨', '🛒', '🛠', '🛢', '🧀', '🌭', '🌮', '🌯', '🌺', '🌻', '🌼', '🌽', '🌾', '🌿', '🍊', '🍋', '🍌', '🍍', '🍎', '🍏', '🍚', '🍛', '🍜', '🍝', '🍞', '🍟', '🍪', '🍫', '🍬', '🍭', '🍮', '🍯', '🍺', '🍻', '🍼', '🍽', '🍾', '🍿', '🎊', '🎋', '🎍', '🎏', '🎚', '🎛', '🎞', '🐌', '🐍', '🐎', '🐚', '🐛', '🐝', '🐞', '🐟', '🐬', '🐭', '🐮', '🐯', '🐻', '🐼', '🐿', '👛', '👜', '👝', '👞', '👟', '💊', '💋', '💍', '💎', '🔋', '🔌', '🔪', '🔫', '🔬', '🔭', '🔮', '🕯', '🖊', '🖋', '🖌', '🖍', '🥚', '🥛', '🥜', '🥝', '🥞', '🦊', '🦋', '🦌', '🦍', '🦎', '🦏', '🌀', '🌂', '🌑', '🌕', '🌡', '🌤', '⛅️', '🌦', '🌧', '🌨', '🌩', '🌰', '🌱', '🌲', '🌳', '🌴', '🌵', '🌶', '🌷', '🌸', '🌹', '🍀', '🍁', '🍂', '🍃', '🍄', '🍅', '🍆', '🍇', '🍈', '🍉', '🍐', '🍑', '🍒', '🍓', '🍔', '🍕', '🍖', '🍗', '🍘', '🍙', '🍠', '🍡', '🍢', '🍣', '🍤', '🍥', '🍦', '🍧', '🍨', '🍩', '🍰', '🍱', '🍲', '🍴', '🍵', '🍶', '🍷', '🍸', '🍹', '🎀', '🎁', '🎂', '🎃', '🎄', '🎈', '🎉', '🎒', '🎓', '🎙', '🐀', '🐁', '🐂', '🐃', '🐄', '🐅', '🐆', '🐇', '🐕', '🐉', '🐓', '🐖', '🐗', '🐘', '🐙', '🐠', '🐡', '🐢', '🐣', '🐤', '🐥', '🐦', '🐧', '🐨', '🐩', '🐰', '🐱', '🐴', '🐵', '🐶', '🐷', '🐸', '🐹', '👁\u200d🗨', '👑', '👒', '👠', '👡', '👢', '💄', '💈', '🔗', '🔥', '🔦', '🔧', '🔨', '🔩', '🔰', '🔱', '🕰', '🕶', '🕹', '🖇', '🚀', '🤖', '🥀', '🥁', '🥂', '🥃', '🥐', '🥑', '🥒', '🥓', '🥔', '🥕', '🥖', '🥗', '🥘', '🥙', '🦀', '🦁', '🦂', '🦃', '🦄', '🦅', '🦆', '🦇', '🦈', '🦉', '🦐', '🦑', '⭐️', '⏰', '⏲', '⚠️', '⚡️', '⚰️', '⚽️', '⚾️', '⛄️', '⛅️', '⛈', '⛏', '⛓', '⌚️', '☎️', '⚜️', '✏️', '⌨️', '☁️', '☃️', '☄️', '☕️', '☘️', '☠️', '♨️', '⚒', '⚔️', '⚙️', '✈️', '✉️', '✒️']
 
@@ -108,6 +144,9 @@ item_size_type = {
     "smartphone": None,
     "accessory": None
 }
+
+
+
 def check_regex(regex, string):
   pattern = re.compile(regex)
   if pattern.fullmatch(string):
@@ -118,22 +157,29 @@ def check_regex(regex, string):
 price_config_path = 'price_conf.json'
 
 
-def get_price_var(key: str) -> float | None:
-    prices_deta = config_storage.get(price_config_path)
-    if prices_deta is None:
+def read_config_data() -> str:
+    if not os.path.exists(price_config_path):
         default_price_config = {
             "kg_cost": 750.0,
             "change": 11.5,
             "commission": 700,
         }
         raw_json = json.dumps(default_price_config)
-        config_storage.put(price_config_path, raw_json)
-        if key in default_price_config:
-            return default_price_config[key]
-        else:
-            return None
-    price_config = json.loads(prices_deta.read())
-    prices_deta.close()
+        with open(price_config_path, 'w') as config_file:
+            config_file.write(raw_json)
+
+    with open(price_config_path, 'r') as config_file:
+        raw_json = config_file.read()
+        return raw_json
+
+
+def store_config_data(raw_json: str) -> None:
+    with open(price_config_path, 'w') as config_file:
+        config_file.write(raw_json)
+
+
+def get_price_var(key: str) -> float | None:
+    price_config = json.loads(read_config_data())
     if key in price_config:
         return price_config[key]
     else:
@@ -141,37 +187,19 @@ def get_price_var(key: str) -> float | None:
 
 
 def get_price_vars(*keys: str) -> tuple | None:
-    prices_deta = config_storage.get(price_config_path)
-    if prices_deta is None:
-        default_price_config = {
-            "kg_cost": 750.,
-            "change": 11.5,
-            "commission": 700.,
-        }
-        raw_json = json.dumps(default_price_config)
-        config_storage.put(price_config_path, raw_json)
-
-        if not all(key in default_price_config for key in keys):
-            return None
-        return tuple(default_price_config[key] for key in keys)
-
-    price_config = json.loads(prices_deta.read())
-    prices_deta.close()
-    if not all(key in price_config for key in keys):
+    price_config = json.loads(read_config_data())
+    if any(key not in price_config for key in keys):
         return None
     return tuple(price_config[key] for key in keys)
 
+
 def set_price_var(key: str, value: float):
-    prices_deta = config_storage.get(price_config_path)
-    if prices_deta is None:
-        raise IOError
-    price_config = json.loads(prices_deta.read())
-    prices_deta.close()
+    price_config = json.loads(read_config_data())
     if key not in price_config:
         raise KeyError
-
     price_config[key] = value
-    config_storage.put(price_config_path, price_config)
+    store_config_data(price_config)
+
 
 def order_formula(type, price):
     price_vars = get_price_vars('commission', 'kg_cost', 'change')
@@ -187,9 +215,6 @@ def order_formula(type, price):
 def copy_file(current_path, new_path):
     shutil.copyfile(f"{str(current_path)}", f"{str(new_path)}")
 
-def create_userfile(id):
-    filename = str(id)+'.json'
-    return user_tmp.put(name=filename, data=json.dumps(user_json_model), content_type="application/json")
 
 def download_image(url, filename):
     try:
@@ -221,26 +246,153 @@ else:
 
 if admin_id is not None:
     add_admin(admin_id)
+# ------------------------------- MINIO FILE CONTROL FUNCTIONS -------------------------
+
+def minio_get_userfile(filename: str):
+    try:
+        resp = minio_client.get_object(user_bucket, filename)
+        raw_json = resp.read()
+    except Exception as e:
+        print('Error loading file from minio')
+    else:
+        return raw_json
+    finally:
+        resp.close(); resp.release_conn()
+
+
+def minio_put_userfile(filename: str, contents: str):
+    try:
+        resp = minio_client.put_object(user_bucket, filename, data=contents ,content_type='application/json')
+    except Exception as e:
+        print(f"Error writing {filename} to minio")
+    finally:
+        print(f"Minio write result: {str(resp)}")
+
+# ---------------------------------- DATABASE FUNCTIONS --------------------------------
+
+def db_get_connection() -> PooledMySQLConnection | MySQLConnectionAbstract | None:
+    try:
+        conn = mysql.connector.connect(
+            host='localhost:3306',
+            user='root',
+            password=mysql_root_password,
+            database=mysql_database_name,
+        )
+    except mysql.connector.Error as err:
+        print(f'Error connecting to database; {err}')
+        return None
+    else:
+        return conn
+
+def db_add_user(user: dict[str, str]):
+    try:
+        conn = db_get_connection()
+        cursor = conn.cursor()
+
+        values = (user['id'], user['level'], user['state'])
+        cursor.execute(database_queries.add_user, values)
+        conn.commit()
+    except mysql.connector.Error as err:
+        print(f"Error adding user: {err}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+def db_get_user(id: str) -> dict[str, any] | None:
+    try:
+        conn = db_get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(database_queries.get_user, (id,))
+        result = cursor.fetchone()
+        if result:
+            user_data = {
+                'id': result[0],
+                'level': result[1],
+                'state': result[2]
+            }
+            return user_data
+        else:
+            return None
+
+    except mysql.connector.Error as err:
+        print(f"Error retrieving user: {err}")
+        return None
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+def db_add_order(order_data: dict[str, any]):
+    try:
+        conn = db_get_connection()
+        cursor = conn.cursor()
+
+        data_json = json.dumps(order_data['data'])
+        values = (order_data['id'], data_json, False, order_data['user_id'])
+        cursor.execute(database_queries.add_user, values)
+        conn.commit()
+    except mysql.connector.Error as err:
+        print(f"Error adding user: {err}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+
+def db_confirm_order(order_id):
+    try:
+        # Connect to the MySQL database
+        conn = db_get_connection()
+        cursor = conn.cursor()
+
+        # Update the 'is_confirmed' field of the order
+        cursor.execute(database_queries.confirm_order, (order_id,))
+        conn.commit()
+
+        print(f"Order with ID {order_id} has been marked as confirmed.")
+
+    except mysql.connector.Error as err:
+        print(f"Error confirming order: {err}")
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 
 # ------------------------------- DATA CONTROL FUNCTIONS -------------------------------
+
+def create_userfile(id):
+    filename = str(id)+'.json'
+    return minio_put_userfile(filename=filename, contents=json.dumps(user_json_model))
 
 # ~USER FUNCTIONS~
 def modify_userfile(id, val, field, category=None):
     filename = str(id)+'.json'
-    file = json.loads(json.load(user_tmp.get(name=filename)))
+    user_data = json.loads(minio_get_userfile(filename))
     if category is None:
-        file[field]=val
+        user_data[field]=val
     else:
-        file[category][field]=val
-    return user_tmp.put(name=filename, data=json.dumps(file), content_type="application/json")
+        user_data[category][field]=val
+    return minio_put_userfile(filename=filename, contents=json.dumps(user_data))
 
 def get_userfile(id):
     filename = str(id)+'.json'
-    file = json.loads(json.load(user_tmp.get(name=filename)))
+    file = json.loads(minio_get_userfile(filename))
     return file
 
 def add_user(id):
-    user = user_db.put({
+    user = db_add_user({
         "key": str(id),
         "state": "MAIN_MENU",
         "lvl": "user"
@@ -249,7 +401,7 @@ def add_user(id):
     return user
 
 def get_user(id):
-    user = user_db.get(str(id))
+    user = db_get_user(str(id))
     return user if user else None
 
 def change_user_state(id, state):
@@ -265,7 +417,7 @@ def get_admins():
     return admins if admins else None
 
 def add_order(id, type, link, size, price, fio, adress, number):
-    order = all_orders.put({
+    order = db_add_order({
         "id": str(id),
         "data": {
             "product_type": type,
@@ -280,7 +432,7 @@ def add_order(id, type, link, size, price, fio, adress, number):
     return order
 
 def get_order(key):
-    order = all_orders.get(str(key))
+    order = db_get_order(str(key))
     return order if order else None
 
 def confirm_order(id, key):
@@ -626,8 +778,8 @@ def send_about(id):
 
 def send_contact(id):
     reply = json.dumps({'inline_keyboard': [
+            [{'text': "👉🏼 Наш чат", 'url': str(chat_link)}],
             [{'text': "👉🏼 Отзывы", 'url': str(review_link)}],
-            [{'text': "👉🏼 Наш чат", 'url': str(chat_link)}]
         ]
     })
     mes_params = {
