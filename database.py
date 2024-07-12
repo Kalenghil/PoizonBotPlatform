@@ -1,14 +1,14 @@
 from typing import Generator
 
 import mysql
-from mysql.connector.pooling import PooledMySQLConnection, MySQLConnectionAbstract
+from mysql.connector.pooling import PooledMySQLConnection
 import json
 
 import database_queries
 from envs import mysql_database_name, mysql_root_password
 
 
-def db_get_connection() -> PooledMySQLConnection | MySQLConnectionAbstract | None:
+def db_get_connection() -> PooledMySQLConnection | None:
     try:
         conn = mysql.connector.connect(
             host='localhost:3306',
@@ -180,9 +180,7 @@ def db_delete_order(id):
             conn.close()
 
 
-
-
-def get_admin_users() -> tuple[dict[str, str]] | None:
+def get_admin_users() -> Generator[dict[str, str], any, None] | None:
     try:
         conn = db_get_connection()
         cursor = conn.cursor()
@@ -223,7 +221,7 @@ def create_tables():
             conn.close()
 
 
-def db_get_all_orders() -> Generator[dict[str, any]] | None:
+def db_get_all_orders() -> Generator[dict[str, any], any, None] | None:
     try:
         conn = db_get_connection()
         cursor = conn.cursor()
@@ -246,7 +244,7 @@ def db_get_all_orders() -> Generator[dict[str, any]] | None:
             conn.close()
 
 
-def db_get_confirmed_orders() -> Generator[dict[str, any]] | None:
+def db_get_confirmed_orders() -> Generator[dict[str, any], any, None] | None:
     try:
         conn = db_get_connection()
         cursor = conn.cursor()
