@@ -1,4 +1,5 @@
 .venv/
+.temp/
 venv/
 .idea/
 *.pyc
@@ -8,5 +9,6 @@ venv/
 .space/
 .DS_Store
 .env
+.inventory.yaml
 __pycache__/
-redis_password.txt
+redis-password.txt

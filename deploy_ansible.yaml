@@ -1,0 +1,16 @@
+---
+- name: Deploy Application with Docker Compose
+  hosts: webservers
+  become: true
+  tasks:
+    - name: Copy compose.yml to remote host
+      copy:
+        src: ./compose.yaml
+        dest: /home/monvesium-bot/monvbot-proj/docker-compose.yaml
+
+    - name: Run Docker Compose
+      community.general.docker_compose:
+        project_src: /home/monvesium-bot/monvbot-proj
+        state: present
+        pull: yes
+        build: yes

@@ -3,18 +3,27 @@ from envs import mongo_uri, mongo_db, mongo_password, mongo_username
 from typing import Any
 import json
 import pymongo
+import requests
 
+
+requests.get
 
 mc = pymongo.MongoClient(mongo_uri)
 mongo_database = mc[mongo_db]
 
 def create_tables():
-    db = mongo_database
-    db.create_collection('users')
-    db.create_collection('allorders')
-    db.create_collection('conforders')
+    existing_collections = mongo_database.list_collection_names()
+
+    # Create collections if they don't alredy exist
+    if 'users' not in existing_collections:
+        mongo_database.create_collection('users')
+    if 'allorders' not in existing_collections:
+        mongo_database.create_collection('allorders')
+    if 'conforders' not in existing_collections:
+        mongo_database.create_collection('conforders')
+
     print('MongoDB tables created:')
-    print(*db.list_collection_names())
+    print(*mongo_database.list_collection_names())
     
 
 def db_add_user(user: dict[str, str]):

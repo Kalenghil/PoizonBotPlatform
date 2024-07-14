@@ -3,5 +3,5 @@ requests
 Pillow
 image
 python-multipart
-mysql-connector-python
+pymongo
 minio

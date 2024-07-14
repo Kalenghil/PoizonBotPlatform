@@ -16,8 +16,8 @@ redis_password = proceed_env('REDIS_PASSWORD', 'mysecretpassword')
 
 mongo_uri = proceed_env('MONGODB_URI')
 mongo_db = proceed_env('MONGO_INITDB_DATABASE')
-mongo_username = proceed_env('MONGODB_USER')
-mongo_password = proceed_env('MONGODB_PASSWORD')
+mongo_username = proceed_env('MONGO_INITDB_ROOT_USERNAME')
+mongo_password = proceed_env('MONGO_INITDB_ROOT_PASSWORD')
 
 
 minio_access_key = proceed_env('MINIO_ACCESS_KEY', 'minioadmin')
