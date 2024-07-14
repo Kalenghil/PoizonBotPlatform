@@ -1,7 +1,7 @@
 
 from EmojiCaptcha import EmojiCaptcha
 from envs import *
-from database import *
+from database_mongo import *
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -209,7 +209,13 @@ def minio_get_userfile(filename: str):
 
 def minio_put_userfile(filename: str, contents: str):
     try:
-        resp = minio_client.put_object(user_bucket, filename, data=contents ,content_type='application/json')
+        resp = minio_client.put_object(
+            user_bucket,
+            filename,
+            data=contents,
+            content_type='application/json',
+            length=-1
+        )
     except Exception as e:
         print(f"Error writing {filename} to minio")
     finally:
@@ -259,7 +265,7 @@ def change_user_state(id, state):
     return user
 
 def get_admins():
-    admins = get_admin_users()
+    admins = db_get_admin_users()
     return admins if admins else None
 
 def add_order(id, type, link, size, price, fio, adress, number):

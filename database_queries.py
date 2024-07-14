@@ -44,7 +44,7 @@ get_order = """
 """
 
 delete_order = """
-    DELETE FROM orders WHERE jey = %s
+    DELETE FROM orders WHERE key = %s
 """
 
 get_all_orders = """

@@ -7,13 +7,21 @@ def proceed_bool_env(env):
     else: return None
 
 envs = os.environ
-def proceed_env(env_name, default_value):
+def proceed_env(env_name: str, default_value=''):
     if env_name not in envs:
         return default_value
     return envs[env_name]
 
+redis_password = proceed_env('REDIS_PASSWORD', 'mysecretpassword')
+
+mongo_uri = proceed_env('MONGODB_URI')
+mongo_db = proceed_env('MONGO_INITDB_DATABASE')
+mongo_username = proceed_env('MONGODB_USER')
+mongo_password = proceed_env('MONGODB_PASSWORD')
+
+
 minio_access_key = proceed_env('MINIO_ACCESS_KEY', 'minioadmin')
-minio_secret_key = proceed_env('MINIO_ACCESS_KEY', 'minioadmin')
+minio_secret_key = proceed_env('MINIO_SECRET_KEY', 'minioadmin')
 
 mysql_root_password = proceed_env('MYSQL_ROOT_PASSWORD', 'rootpassw')
 mysql_database_name = proceed_env('MYSQL_DATABASE', 'monvisium_db')

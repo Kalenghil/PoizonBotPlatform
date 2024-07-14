@@ -1,8 +1,10 @@
-from typing import Generator
+from typing import Generator, Any
 
 import mysql
 from mysql.connector.pooling import PooledMySQLConnection
 import json
+import redis
+
 
 import database_queries
 from envs import mysql_database_name, mysql_root_password
@@ -11,7 +13,7 @@ from envs import mysql_database_name, mysql_root_password
 def db_get_connection() -> PooledMySQLConnection | None:
     try:
         conn = mysql.connector.connect(
-            host='localhost:3306',
+            host='mysql-server:3306',
             user='root',
             password=mysql_root_password,
             database=mysql_database_name,
@@ -40,7 +42,7 @@ def db_add_user(user: dict[str, str]):
             conn.close()
 
 
-def db_get_user(id: str) -> dict[str, any] | None:
+def db_get_user(id: str) -> dict[str, Any] | None:
     try:
         conn = db_get_connection()
         cursor = conn.cursor()
@@ -87,7 +89,7 @@ def db_promote_user(id):
             conn.close()
 
 
-def db_add_order(order_data: dict[str, any]):
+def db_add_order(order_data: dict[str, Any]):
     try:
         conn = db_get_connection()
         cursor = conn.cursor()
@@ -125,7 +127,7 @@ def db_confirm_order(order_id):
             conn.close()
 
 
-def db_get_order(id) -> dict[str, any] | None:
+def db_get_order(id) -> dict[str, Any] | None:
     try:
         conn = mysql.connector.connect(
             host="localhost",
@@ -180,7 +182,7 @@ def db_delete_order(id):
             conn.close()
 
 
-def get_admin_users() -> Generator[dict[str, str], any, None] | None:
+def db_get_admin_users() -> Generator[dict[str, str], Any, None] | None:
     try:
         conn = db_get_connection()
         cursor = conn.cursor()
@@ -221,7 +223,7 @@ def create_tables():
             conn.close()
 
 
-def db_get_all_orders() -> Generator[dict[str, any], any, None] | None:
+def db_get_all_orders() -> Generator[dict[str, Any], Any, None] | None:
     try:
         conn = db_get_connection()
         cursor = conn.cursor()
@@ -244,7 +246,7 @@ def db_get_all_orders() -> Generator[dict[str, any], any, None] | None:
             conn.close()
 
 
-def db_get_confirmed_orders() -> Generator[dict[str, any], any, None] | None:
+def db_get_confirmed_orders() -> Generator[dict[str, Any], Any, None] | None:
     try:
         conn = db_get_connection()
         cursor = conn.cursor()
