@@ -1,4 +1,5 @@
 
+import io
 from EmojiCaptcha import EmojiCaptcha
 from envs import *
 from database_mongo import *
@@ -21,7 +22,6 @@ base_url = "https://api.telegram.org/bot"
 url=f"{base_url}{token}/sendMessage"
 url_image=f"{base_url}{token}/sendPhoto"
 
-
 def create_buckets(client: minio.Minio) -> None:
     if not client.bucket_exists(user_bucket):
         client.make_bucket(user_bucket)
@@ -32,11 +32,14 @@ minio_client = minio.Minio(
     'minio:9000',
     access_key=minio_access_key,
     secret_key=minio_secret_key,
+    secure=False,
 )
 user_bucket = 'users'
 config_bucket = 'config'
 print('trying to create tables')
 create_tables()
+print('trying to create buckets')
+create_buckets()
 
 emojis = ['🃏', '🎤', '🎥', '🎨', '🎩', '🎬', '🎭', '🎮', '🎯', '🎱', '🎲', '🎷', '🎸', '🎹', '🎾', '🏀', '🏆', '🏈', '🏉', '🏐', '🏓', '💠', '💡', '💣', '💨', '💸', '💻', '💾', '💿', '📈', '📉', '📊', '📌', '📍', '📎', '📏', '📐', '📞', '📟', '📠', '📡', '📢', '📣', '📦', '📹', '📺', '📻', '📼', '📽', '🖥', '🖨', '🖲', '🗂', '🗃', '🗄', '🗜', '🗝', '🗡', '🚧', '🚨', '🛒', '🛠', '🛢', '🧀', '🌭', '🌮', '🌯', '🌺', '🌻', '🌼', '🌽', '🌾', '🌿', '🍊', '🍋', '🍌', '🍍', '🍎', '🍏', '🍚', '🍛', '🍜', '🍝', '🍞', '🍟', '🍪', '🍫', '🍬', '🍭', '🍮', '🍯', '🍺', '🍻', '🍼', '🍽', '🍾', '🍿', '🎊', '🎋', '🎍', '🎏', '🎚', '🎛', '🎞', '🐌', '🐍', '🐎', '🐚', '🐛', '🐝', '🐞', '🐟', '🐬', '🐭', '🐮', '🐯', '🐻', '🐼', '🐿', '👛', '👜', '👝', '👞', '👟', '💊', '💋', '💍', '💎', '🔋', '🔌', '🔪', '🔫', '🔬', '🔭', '🔮', '🕯', '🖊', '🖋', '🖌', '🖍', '🥚', '🥛', '🥜', '🥝', '🥞', '🦊', '🦋', '🦌', '🦍', '🦎', '🦏', '🌀', '🌂', '🌑', '🌕', '🌡', '🌤', '⛅️', '🌦', '🌧', '🌨', '🌩', '🌰', '🌱', '🌲', '🌳', '🌴', '🌵', '🌶', '🌷', '🌸', '🌹', '🍀', '🍁', '🍂', '🍃', '🍄', '🍅', '🍆', '🍇', '🍈', '🍉', '🍐', '🍑', '🍒', '🍓', '🍔', '🍕', '🍖', '🍗', '🍘', '🍙', '🍠', '🍡', '🍢', '🍣', '🍤', '🍥', '🍦', '🍧', '🍨', '🍩', '🍰', '🍱', '🍲', '🍴', '🍵', '🍶', '🍷', '🍸', '🍹', '🎀', '🎁', '🎂', '🎃', '🎄', '🎈', '🎉', '🎒', '🎓', '🎙', '🐀', '🐁', '🐂', '🐃', '🐄', '🐅', '🐆', '🐇', '🐕', '🐉', '🐓', '🐖', '🐗', '🐘', '🐙', '🐠', '🐡', '🐢', '🐣', '🐤', '🐥', '🐦', '🐧', '🐨', '🐩', '🐰', '🐱', '🐴', '🐵', '🐶', '🐷', '🐸', '🐹', '👁\u200d🗨', '👑', '👒', '👠', '👡', '👢', '💄', '💈', '🔗', '🔥', '🔦', '🔧', '🔨', '🔩', '🔰', '🔱', '🕰', '🕶', '🕹', '🖇', '🚀', '🤖', '🥀', '🥁', '🥂', '🥃', '🥐', '🥑', '🥒', '🥓', '🥔', '🥕', '🥖', '🥗', '🥘', '🥙', '🦀', '🦁', '🦂', '🦃', '🦄', '🦅', '🦆', '🦇', '🦈', '🦉', '🦐', '🦑', '⭐️', '⏰', '⏲', '⚠️', '⚡️', '⚰️', '⚽️', '⚾️', '⛄️', '⛅️', '⛈', '⛏', '⛓', '⌚️', '☎️', '⚜️', '✏️', '⌨️', '☁️', '☃️', '☄️', '☕️', '☘️', '☠️', '♨️', '⚒', '⚔️', '⚙️', '✈️', '✉️', '✒️']
 
@@ -190,28 +193,33 @@ if admin_id is not None:
 def minio_get_userfile(filename: str):
     try:
         resp = minio_client.get_object(user_bucket, filename)
-        raw_json = resp.read()
+        byte_json = resp.read()
+        raw_json = byte_json.decode('utf-8')
     except Exception as e:
         print('Error loading file from minio')
     else:
-        return raw_json
-    finally:
+        print(f"Userfile {filename} got from minio")
         resp.close(); resp.release_conn()
+        return raw_json
+        
 
 
 def minio_put_userfile(filename: str, contents: str):
+    raw_bytes = contents.encode('utf-8')
+    byte_buffer = io.BytesIO(contents)
     try:
         resp = minio_client.put_object(
             user_bucket,
             filename,
-            data=contents,
+            data=byte_buffer,
             content_type='application/json',
-            length=-1
+            length=len(raw_bytes)
         )
     except Exception as e:
         print(f"Error writing {filename} to minio")
-    finally:
+    else:
         print(f"Minio write result: {str(resp)}")
+        resp.close(); resp.release_conn()
 
 # ---------------------------------- DATABASE FUNCTIONS --------------------------------
 
@@ -239,7 +247,7 @@ def get_userfile(id):
 
 def add_user(id):
     user = db_add_user({
-        "key": str(id),
+        "id": str(id),
         "state": "MAIN_MENU",
         "lvl": "user"
     })
@@ -248,7 +256,7 @@ def add_user(id):
 
 def add_admin(id):
     user = db_add_user({
-        "key": str(id),
+        "id": str(id),
         "state": "MAIN_MENU",
         "lvl": "admin"
     })
@@ -707,6 +715,7 @@ def read_current_user(link: str = None, username: str = Depends(get_current_user
 
 @app.post("/")
 def chatbot(in_message: sendMessage):
+    print(f"In_message:")
     message = in_message.message
     query = in_message.callback_query
     value = None

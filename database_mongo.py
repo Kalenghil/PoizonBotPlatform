@@ -11,6 +11,12 @@ requests.get
 mc = pymongo.MongoClient(mongo_uri)
 mongo_database = mc[mongo_db]
 
+def _wrap_cursor_(cursor: pymongo.CursorType) -> pymongo.CursorType | None:
+    if cursor.alive:
+        return cursor
+    else:
+        return None
+
 def create_tables():
     existing_collections = mongo_database.list_collection_names()
 
@@ -35,7 +41,7 @@ def db_get_user(id: str):
     users = db.users
     
     user = users.find({'id': id})
-    return user
+    return _wrap_cursor_(user)
 
 def db_promote_user(id: str):
     users = mongo_database.users
@@ -52,7 +58,7 @@ def db_get_order(id: str):
     orders = mongo_database.allorders
     
     order = orders.find_one({'id': id})
-    return order
+    return _wrap_cursor_(order)
 
 
 def db_confirm_order(id: str):
@@ -74,6 +80,7 @@ def db_delete_order(id: str):
 def db_get_admin_users():
     users = mongo_database.users
     resp = users.find({'lvl': 'admin'})
+    resp = _wrap_cursor_(resp)
     if resp is None:
         return None
     
@@ -83,6 +90,7 @@ def db_get_admin_users():
 def db_get_all_orders():
     allorders = mongo_database.allorders
     resp = allorders.find()
+    resp = _wrap_cursor_(resp)
     if resp is None:
         return None
     
@@ -92,6 +100,7 @@ def db_get_all_orders():
 def db_get_confirmed_orders():
     conforders = mongo_database.conforders
     resp = conforders.find()
+    resp = _wrap_cursor_(resp)
     if resp is None:
         return None
     
