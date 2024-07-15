@@ -39,7 +39,7 @@ config_bucket = 'config'
 print('trying to create tables')
 create_tables()
 print('trying to create buckets')
-create_buckets()
+create_buckets(minio_client)
 
 emojis = ['🃏', '🎤', '🎥', '🎨', '🎩', '🎬', '🎭', '🎮', '🎯', '🎱', '🎲', '🎷', '🎸', '🎹', '🎾', '🏀', '🏆', '🏈', '🏉', '🏐', '🏓', '💠', '💡', '💣', '💨', '💸', '💻', '💾', '💿', '📈', '📉', '📊', '📌', '📍', '📎', '📏', '📐', '📞', '📟', '📠', '📡', '📢', '📣', '📦', '📹', '📺', '📻', '📼', '📽', '🖥', '🖨', '🖲', '🗂', '🗃', '🗄', '🗜', '🗝', '🗡', '🚧', '🚨', '🛒', '🛠', '🛢', '🧀', '🌭', '🌮', '🌯', '🌺', '🌻', '🌼', '🌽', '🌾', '🌿', '🍊', '🍋', '🍌', '🍍', '🍎', '🍏', '🍚', '🍛', '🍜', '🍝', '🍞', '🍟', '🍪', '🍫', '🍬', '🍭', '🍮', '🍯', '🍺', '🍻', '🍼', '🍽', '🍾', '🍿', '🎊', '🎋', '🎍', '🎏', '🎚', '🎛', '🎞', '🐌', '🐍', '🐎', '🐚', '🐛', '🐝', '🐞', '🐟', '🐬', '🐭', '🐮', '🐯', '🐻', '🐼', '🐿', '👛', '👜', '👝', '👞', '👟', '💊', '💋', '💍', '💎', '🔋', '🔌', '🔪', '🔫', '🔬', '🔭', '🔮', '🕯', '🖊', '🖋', '🖌', '🖍', '🥚', '🥛', '🥜', '🥝', '🥞', '🦊', '🦋', '🦌', '🦍', '🦎', '🦏', '🌀', '🌂', '🌑', '🌕', '🌡', '🌤', '⛅️', '🌦', '🌧', '🌨', '🌩', '🌰', '🌱', '🌲', '🌳', '🌴', '🌵', '🌶', '🌷', '🌸', '🌹', '🍀', '🍁', '🍂', '🍃', '🍄', '🍅', '🍆', '🍇', '🍈', '🍉', '🍐', '🍑', '🍒', '🍓', '🍔', '🍕', '🍖', '🍗', '🍘', '🍙', '🍠', '🍡', '🍢', '🍣', '🍤', '🍥', '🍦', '🍧', '🍨', '🍩', '🍰', '🍱', '🍲', '🍴', '🍵', '🍶', '🍷', '🍸', '🍹', '🎀', '🎁', '🎂', '🎃', '🎄', '🎈', '🎉', '🎒', '🎓', '🎙', '🐀', '🐁', '🐂', '🐃', '🐄', '🐅', '🐆', '🐇', '🐕', '🐉', '🐓', '🐖', '🐗', '🐘', '🐙', '🐠', '🐡', '🐢', '🐣', '🐤', '🐥', '🐦', '🐧', '🐨', '🐩', '🐰', '🐱', '🐴', '🐵', '🐶', '🐷', '🐸', '🐹', '👁\u200d🗨', '👑', '👒', '👠', '👡', '👢', '💄', '💈', '🔗', '🔥', '🔦', '🔧', '🔨', '🔩', '🔰', '🔱', '🕰', '🕶', '🕹', '🖇', '🚀', '🤖', '🥀', '🥁', '🥂', '🥃', '🥐', '🥑', '🥒', '🥓', '🥔', '🥕', '🥖', '🥗', '🥘', '🥙', '🦀', '🦁', '🦂', '🦃', '🦄', '🦅', '🦆', '🦇', '🦈', '🦉', '🦐', '🦑', '⭐️', '⏰', '⏲', '⚠️', '⚡️', '⚰️', '⚽️', '⚾️', '⛄️', '⛅️', '⛈', '⛏', '⛓', '⌚️', '☎️', '⚜️', '✏️', '⌨️', '☁️', '☃️', '☄️', '☕️', '☘️', '☠️', '♨️', '⚒', '⚔️', '⚙️', '✈️', '✉️', '✒️']
 
@@ -205,9 +205,13 @@ def minio_get_userfile(filename: str):
 
 
 def minio_put_userfile(filename: str, contents: str):
+    print('Minio adding userfile')
     raw_bytes = contents.encode('utf-8')
+    print('Raw bytes')
     byte_buffer = io.BytesIO(contents)
-    try:
+    print('Buffer created')
+    if True:
+        print('trying to add userfile')
         resp = minio_client.put_object(
             user_bucket,
             filename,
@@ -215,9 +219,7 @@ def minio_put_userfile(filename: str, contents: str):
             content_type='application/json',
             length=len(raw_bytes)
         )
-    except Exception as e:
-        print(f"Error writing {filename} to minio")
-    else:
+        print('userfile created')
         print(f"Minio write result: {str(resp)}")
         resp.close(); resp.release_conn()
 
@@ -228,6 +230,7 @@ def minio_put_userfile(filename: str, contents: str):
 
 def create_userfile(id):
     filename = str(id)+'.json'
+    print('Trying to put userfile')
     return minio_put_userfile(filename=filename, contents=json.dumps(user_json_model))
 
 # ~USER FUNCTIONS~
@@ -247,20 +250,21 @@ def get_userfile(id):
 
 def add_user(id):
     user = db_add_user({
-        "id": str(id),
+        "_id": str(id),
         "state": "MAIN_MENU",
         "lvl": "user"
     })
-    create_userfile(id)
+    print('creating userfile')
+    #create_userfile(id)
     return user
 
 def add_admin(id):
     user = db_add_user({
-        "id": str(id),
+        "_id": str(id),
         "state": "MAIN_MENU",
         "lvl": "admin"
     })
-    create_userfile(id)
+    #create_userfile(id)
     return user
 
 def get_user(id):
@@ -268,8 +272,9 @@ def get_user(id):
     return user if user else None
 
 def change_user_state(id, state):
+    print("Changing user state")
     user_old = get_user(id)
-    user = db_promote_user(id)
+    user = db_change_user_state(id, state)
 
     return user
 
@@ -279,7 +284,7 @@ def get_admins():
 
 def add_order(id, type, link, size, price, fio, adress, number):
     order = db_add_order({
-        "id": str(id),
+        "_id": str(id),
         "data": {
             "product_type": type,
             "product_link": link,
@@ -300,7 +305,7 @@ def confirm_order(id, key):
     order_from_all_orders = get_order(key)
     confirmed_order = None
     if order_from_all_orders is not None:
-        send_confirm_prompt(order_from_all_orders["id"], order_from_all_orders)
+        send_confirm_prompt(order_from_all_orders["_id"], order_from_all_orders)
         send_text(id, f"Заказ номер `{key}` подтверждён. Спасибо!")
         db_confirm_order(key)
     else:
@@ -311,7 +316,7 @@ def decline_order(id, key):
     parsed_order = get_order(key)
     deleted_order = None
     if parsed_order is not None:
-        send_decline_prompt(parsed_order["id"], parsed_order)
+        send_decline_prompt(parsed_order["_id"], parsed_order)
         deleted_order = db_delete_order(id)
     content = send_text(id, f"Заказ номер `{key}` отклонён. Спасибо!")
     return content, deleted_order
@@ -326,13 +331,25 @@ def fetch_confirmed_orders(filter: dict = None):
 
 # ------------------------------- MESSAGE FUNCTIONS -------------------------------
 def init_user(id):
-    if get_user(id) is None:
-        add_user(id)
+    print(f"User init: {id}")
+    user_id = get_user(id)
+    print(f"User id found: {user_id}")
+    if user_id is None:
+        print('New user')
+        if admin_id is not None and id == int(admin_id):
+            print('Adding admin')
+            add_admin(id)
+        else:
+            print('Adding user')
+            add_user(id)
     else:
+        print('Old user')
         change_user_state(id, "MAIN_MENU")
+    print('Trying to display menu')
     return display_menu(id)
 
 def display_menu(id):
+    print('Display menu', id)
     reply = json.dumps({'inline_keyboard': [
             [{'text': 'Произвести расчет 🧑🏻‍💻', 'callback_data': 'calculator'}],
             [{'text': 'Оформить заказ ✅', 'callback_data': 'makeorder'}],
@@ -344,11 +361,14 @@ def display_menu(id):
         "resize_keyboard": True
     })
     mes_params = {
+        "chat_id": str(id),
         "caption": str(mainmenu_text),
         "parse_mode": "markdown",
         "reply_markup": reply
     }
-    resp = requests.post(url_image+(f"?chat_id={id}"), files={'photo': open("/tmp/main_monv.jpg", 'rb')}, params=mes_params)
+    print(f'Trying to make reuqest\n URL:{url_image} \nParams: {mes_params}')
+    resp = requests.post(url_image, files={'photo': open("/tmp/main_monv.jpg", 'rb')}, params=mes_params)
+    print(f'start menu tg api response:{resp.content, resp.headers}')
     return resp.content
 
 
@@ -433,10 +453,11 @@ def send_captcha_prompt(id):
         ]
     })
     mes_params = {
+        "chat_id": str(id),
         "caption": "🤖 Подтвердите свою человечность!\nНажмите на эмодзи, соответствующий изображению.",
         "reply_markup": reply
     }
-    resp = requests.post(url_image+(f"?chat_id={id}"), files={'photo': open(f"/tmp/captcha{id}.png", 'rb')}, params=mes_params).content
+    resp = requests.post(url_image, files={'photo': open(f"/tmp/captcha{id}.png", 'rb')}, params=mes_params).content
     generated_captcha.remove()
     modify_userfile(id, generated_captcha.answer, "captcha_answer", "order")
     return resp
@@ -523,7 +544,7 @@ def send_orderlink_prompt(id):
 def send_admin_prompt(id, order):
     reply = json.dumps({'inline_keyboard': [
             [{'text': '✔️ Подтвердить', 'callback_data': f"confirm{order['key']}"}, {'text': '❌ Отменить', 'callback_data': f"decline{order['key']}"}],
-            [{'text': '👤 Cвязь с клиентом', 'url': f"tg://user?id={order['id']}"}]
+            [{'text': '👤 Cвязь с клиентом', 'url': f"tg://user?id={order['_id']}"}]
         ]
     })
     text = f"У Вас новая заявка!\nДетали заказа номер `{order['key']}`:\n"
@@ -605,7 +626,7 @@ def send_faq(id):
         ]
     })
     mes_params = {
-    "chat_id": id,
+    "chat_id": str(id),
     "text": "Инструкции по работе с каждой площадкой:",
     "reply_markup": reply
     }
@@ -618,10 +639,11 @@ def send_about(id):
         ]
     })
     mes_params = {
+        "chat_id": str(id),
         "caption": str(about_text),
         "reply_markup": reply
     }
-    resp = requests.post(url_image+(f"?chat_id={id}"), files={'photo': open("/tmp/about_monv.jpg", 'rb')}, params=mes_params)
+    resp = requests.post(url_image, files={'photo': open("/tmp/about_monv.jpg", 'rb')}, params=mes_params)
     return resp.content
 
 def send_contact(id):
@@ -639,7 +661,7 @@ def send_contact(id):
 
 def display_order(id, order):
     text = f"Заказ номер `{order['key']}`:\n\n"
-    text += f"*Id клиента:* {order['id']}\n"
+    text += f"*Id клиента:* {order['_id']}\n"
     text += f"*Тип заказа:* {order['data']['product_type']}\n"
     text += f"*Ссылка на товар:* {str(order['data']['product_link'])}\n"
     text += f"*Размер товара:* {order['data']['product_size']}\n"
@@ -723,6 +745,7 @@ def chatbot(in_message: sendMessage):
         if query is None:
             user = get_user(message["from"]["id"])
             if (user is None) or (user["lvl"] != "banned"):
+                print(f"New or banned user")
                 try:
                     value = handle_message(message)
                 except Exception as e:
@@ -730,6 +753,7 @@ def chatbot(in_message: sendMessage):
         else:
             user = get_user(query["from"]["id"])
             if (user is None) or (user["lvl"] != "banned"):
+                print(f"New or banned user")
                 try:
                     value = handle_queries(query)
                 except Exception as e:
@@ -738,6 +762,7 @@ def chatbot(in_message: sendMessage):
 
 def handle_message(mess):
     answer = None
+    print(f'message: {mess}')
     if "entities" in mess:
         if mess["entities"][0]["type"] == "bot_command":
             answer = handle_command(mess)
@@ -752,6 +777,7 @@ def handle_message(mess):
             answer = handle_replykeyboard(mess)
         else:
             answer = handle_input(mess)
+    print('Message answer')
     return answer
 
 def handle_replykeyboard(mess):
@@ -760,6 +786,7 @@ def handle_replykeyboard(mess):
 
 def handle_command(mess):
     chat_id = mess["from"]["id"]
+    print(f'handling command: {chat_id}')
     user = get_user(chat_id)
     command_answer = None
     if mess["text"] == "/start":
@@ -837,6 +864,7 @@ def handle_command(mess):
                         command_answer = send_parametercommission_info(chat_id, commission)
                 else:
                     command_answer = send_text(chat_id, "Ошибка в вызове команды.")
+    print(f"probably response from telegram api: {command_answer}")
     return command_answer
 
 def handle_number(mess):
@@ -950,6 +978,7 @@ def handle_input(mess):
     return resp
 
 def handle_queries(quer):
+    print('handling query')
     chat_id = quer["from"]["id"]
     resp = None
     user = get_user(chat_id)
