@@ -2592,7 +2592,7 @@ class EmojiCaptcha:
         background = Image.open(self.background)
         emojis: List[str] = list()
         r = random.random()
-        random.shuffle(supported_emojis, lambda: r)
+        random.shuffle(supported_emojis)
         for i in range(6):
             emojis.append(supported_emojis[i])
         captcha_answer = random.choice(emojis)

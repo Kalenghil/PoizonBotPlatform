@@ -1,0 +1,17 @@
+---
+- name: Deploy Application with Docker Compose
+  hosts: webservers
+  become: true
+  tasks:
+    - name: Copy .env file top remote
+      ansible.builtin.copy:
+        src: ./.env
+        dest: /home/monvesium-bot/monvbot-proj/.env
+
+    - name: Run Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: /home/monvesium-bot/monvbot-proj
+        state: present
+        pull: always
+        build: never
+        recreate: always

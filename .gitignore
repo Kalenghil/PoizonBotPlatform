@@ -6,6 +6,7 @@ venv/
 *.pyo
 *.pyd
 *.log
+*.swp
 .space/
 .DS_Store
 .env
