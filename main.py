@@ -4,7 +4,7 @@ from database_mongo import *
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from typing import Optional
+from typing import Optional, Tuple
 from datetime import datetime
 import minio
 import requests
@@ -23,9 +23,12 @@ base_url = "https://api.telegram.org/bot"
 url=f"{base_url}{token}/sendMessage"
 url_image=f"{base_url}{token}/sendPhoto"
 
-def create_buckets(client: minio.Minio) -> None:
+def prepare_minio(client: minio.Minio) -> None:
     if not client.bucket_exists(user_bucket):
         client.make_bucket(user_bucket)
+    if not client.bucket_exists(config_bucket):
+        client.make_bucket(config_bucket)
+
 
 app = FastAPI()
 security = HTTPBasic()
@@ -40,7 +43,7 @@ config_bucket = 'config'
 print('trying to create tables')
 create_tables()
 print('trying to create buckets')
-create_buckets(minio_client)
+prepare_minio(minio_client)
 
 emojis = ['🃏', '🎤', '🎥', '🎨', '🎩', '🎬', '🎭', '🎮', '🎯', '🎱', '🎲', '🎷', '🎸', '🎹', '🎾', '🏀', '🏆', '🏈', '🏉', '🏐', '🏓', '💠', '💡', '💣', '💨', '💸', '💻', '💾', '💿', '📈', '📉', '📊', '📌', '📍', '📎', '📏', '📐', '📞', '📟', '📠', '📡', '📢', '📣', '📦', '📹', '📺', '📻', '📼', '📽', '🖥', '🖨', '🖲', '🗂', '🗃', '🗄', '🗜', '🗝', '🗡', '🚧', '🚨', '🛒', '🛠', '🛢', '🧀', '🌭', '🌮', '🌯', '🌺', '🌻', '🌼', '🌽', '🌾', '🌿', '🍊', '🍋', '🍌', '🍍', '🍎', '🍏', '🍚', '🍛', '🍜', '🍝', '🍞', '🍟', '🍪', '🍫', '🍬', '🍭', '🍮', '🍯', '🍺', '🍻', '🍼', '🍽', '🍾', '🍿', '🎊', '🎋', '🎍', '🎏', '🎚', '🎛', '🎞', '🐌', '🐍', '🐎', '🐚', '🐛', '🐝', '🐞', '🐟', '🐬', '🐭', '🐮', '🐯', '🐻', '🐼', '🐿', '👛', '👜', '👝', '👞', '👟', '💊', '💋', '💍', '💎', '🔋', '🔌', '🔪', '🔫', '🔬', '🔭', '🔮', '🕯', '🖊', '🖋', '🖌', '🖍', '🥚', '🥛', '🥜', '🥝', '🥞', '🦊', '🦋', '🦌', '🦍', '🦎', '🦏', '🌀', '🌂', '🌑', '🌕', '🌡', '🌤', '⛅️', '🌦', '🌧', '🌨', '🌩', '🌰', '🌱', '🌲', '🌳', '🌴', '🌵', '🌶', '🌷', '🌸', '🌹', '🍀', '🍁', '🍂', '🍃', '🍄', '🍅', '🍆', '🍇', '🍈', '🍉', '🍐', '🍑', '🍒', '🍓', '🍔', '🍕', '🍖', '🍗', '🍘', '🍙', '🍠', '🍡', '🍢', '🍣', '🍤', '🍥', '🍦', '🍧', '🍨', '🍩', '🍰', '🍱', '🍲', '🍴', '🍵', '🍶', '🍷', '🍸', '🍹', '🎀', '🎁', '🎂', '🎃', '🎄', '🎈', '🎉', '🎒', '🎓', '🎙', '🐀', '🐁', '🐂', '🐃', '🐄', '🐅', '🐆', '🐇', '🐕', '🐉', '🐓', '🐖', '🐗', '🐘', '🐙', '🐠', '🐡', '🐢', '🐣', '🐤', '🐥', '🐦', '🐧', '🐨', '🐩', '🐰', '🐱', '🐴', '🐵', '🐶', '🐷', '🐸', '🐹', '👁\u200d🗨', '👑', '👒', '👠', '👡', '👢', '💄', '💈', '🔗', '🔥', '🔦', '🔧', '🔨', '🔩', '🔰', '🔱', '🕰', '🕶', '🕹', '🖇', '🚀', '🤖', '🥀', '🥁', '🥂', '🥃', '🥐', '🥑', '🥒', '🥓', '🥔', '🥕', '🥖', '🥗', '🥘', '🥙', '🦀', '🦁', '🦂', '🦃', '🦄', '🦅', '🦆', '🦇', '🦈', '🦉', '🦐', '🦑', '⭐️', '⏰', '⏲', '⚠️', '⚡️', '⚰️', '⚽️', '⚾️', '⛄️', '⛅️', '⛈', '⛏', '⛓', '⌚️', '☎️', '⚜️', '✏️', '⌨️', '☁️', '☃️', '☄️', '☕️', '☘️', '☠️', '♨️', '⚒', '⚔️', '⚙️', '✈️', '✉️', '✒️']
 
@@ -61,15 +64,17 @@ class sendMessage(BaseModel):
 user_json_model = {
     "order": {
         "type": None,
+        "price": None,
+        "currency": None,
         "link": None,
         "size": None,
-        "price": None,
         "fio": None,
         "adress": None,
         "number": None,
         "captcha_answer": None,
     },
     "calc": {
+        "currency": None,
         "type": None,
         "price": None
     }
@@ -107,31 +112,33 @@ def check_regex(regex, string):
     return False
 
 price_config_path = 'price_conf.json'
+currency_config_path = 'currency_conf.json'
 
 
-def read_config_data() -> str:
-    if not os.path.exists(price_config_path):
-        default_price_config = {
-            "kg_cost": 750.0,
-            "change": 11.5,
-            "commission": 700,
-        }
-        raw_json = json.dumps(default_price_config)
-        with open(price_config_path, 'w') as config_file:
-            config_file.write(raw_json)
+def read_config_data(filename: str, config_default: dict[str, Any]) -> str:
+    if not minio_file_exists(filename, config_bucket):
+        raw_json = json.dumps(config_default)
+        minio_put_file(filename, config_bucket, raw_json)
 
-    with open(price_config_path, 'r') as config_file:
-        raw_json = config_file.read()
-        return raw_json
+    resp = minio_get_file(filename, config_bucket)
+    return resp
 
 
-def store_config_data(raw_json: str) -> None:
-    with open(price_config_path, 'w') as config_file:
-        config_file.write(raw_json)
+def store_config_data(filename, raw_json: str) -> None:
+    resp = minio_put_file(filename, config_bucket, raw_json)
 
+
+# ================================= PRICE CONFIG ===================================
+
+def read_price_config_data():
+    default_price_config = {
+        "kg_cost": 750.0,
+        "commission": 700,
+    }
+    return read_config_data(price_config_path, default_price_config)
 
 def get_price_var(key: str) -> float | None:
-    price_config = json.loads(read_config_data())
+    price_config = json.loads(read_price_config_data())
     if key in price_config:
         return price_config[key]
     else:
@@ -139,29 +146,64 @@ def get_price_var(key: str) -> float | None:
 
 
 def get_price_vars(*keys: str) -> tuple | None:
-    price_config = json.loads(read_config_data())
+    price_config = json.loads(read_price_config_data())
     if any(key not in price_config for key in keys):
         return None
     return tuple(price_config[key] for key in keys)
 
 
 def set_price_var(key: str, value: float):
-    price_config = json.loads(read_config_data())
+    price_config = json.loads(read_price_config_data())
     if key not in price_config:
         raise KeyError
     price_config[key] = value
-    store_config_data(json.dumps(price_config))
+    store_config_data(price_config_path, json.dumps(price_config))
 
 
-def order_formula(type, price):
-    price_vars = get_price_vars('commission', 'kg_cost', 'change')
-    if price_vars is None:
-        raise KeyError
-    commission, kg_cost, change = price_vars
-    if use_extended_formula:
-        final_price = commission+((item_weight[type]/1000)*kg_cost)+(price*change)
+# ================================= CURRENCY ===================================
+def read_currency_config_data():
+    default_currency = {
+        "RUB": {"title": "Рубль",  "rate": 1.0,   "emoji": "🇷🇺", "sym": "₽"},
+        "EUR": {"title": "Евро",   "rate": 100.0, "emoji": "🇪🇺", "sym": "€"},
+        "USD": {"title": "Доллар", "rate": 92.0,  "emoji": "🇺🇸", "sym": "$"},
+        "JPY": {"title": "Иена",   "rate": 0.6,   "emoji": "🇯🇵", "sym": "¥"},
+        "CNY": {"title": "Юань",   "rate": 13.0,  "emoji": "🇨🇳", "sym": "¥"},
+    }
+    return read_config_data(currency_config_path, default_currency)
+
+def get_currency_rate(currency_name: str) -> float:
+    currency_config = json.loads(read_currency_config_data())
+    if currency_name in currency_config:
+        return currency_config[currency_name]["rate"]
     else:
-        final_price = price * change + commission
+        return None
+
+def get_supported_currencies() -> Tuple[str]:
+    curr_config: dict[str, Any] = json.loads(read_currency_config_data())
+    return curr_config.keys()
+    
+
+def store_currency_config(currency_config: str):
+    store_config_data(currency_config_path, currency_config)
+
+def set_currency_rate(currency_name: str, new_rate: float):
+    currency_config = json.loads(read_currency_config_data())
+    if currency_name in currency_config:
+        currency_config[currency_name]['rate'] = new_rate
+    store_currency_config(json.dumps(currency_config))
+
+
+def order_formula(params: dict[str, float]):
+    currency, price, type = params['currency'], params['price'], params['type']
+    price_vars = get_price_vars('kg_cost', 'change')
+    currency_exchg_rate = get_currency_rate(currency)
+    if price_vars is None or currency_exchg_rate is None:
+        raise KeyError
+    commission, kg_cost = price_vars
+    if use_extended_formula:
+        final_price = commission+((item_weight[type]/1000)*kg_cost)+(price*currency_exchg_rate)
+    else:
+        final_price = price * currency_exchg_rate + commission
     return final_price
 
 def copy_file(current_path, new_path):
@@ -191,40 +233,59 @@ if admin_id is not None:
     db_promote_user(admin_id)
 # ------------------------------- MINIO FILE CONTROL FUNCTIONS -------------------------
 
-def minio_get_userfile(filename: str):
+def minio_file_exists(filename: str, bucket_name: str):
     try:
-        resp = minio_client.get_object(user_bucket, filename)
+        # Attempt to get the object's metadata
+        minio_client.stat_object(bucket_name, filename)
+        return True  # Object exists
+    except minio.S3Error as e:
+        if e.code == "NoSuchKey":
+            return False  # Object does not exist
+        else:
+            raise  # Re-raise if it's a different error
+
+def minio_get_file(filename: str, bucket_name: str):
+    try:
+        resp = minio_client.get_object(bucket_name, filename)
         byte_json = resp.read()
         raw_json = byte_json.decode('utf-8')
     except Exception as e:
         print('Error loading file from minio')
     else:
-        print(f"Userfile {filename} got from minio")
+        print(f"File {filename} got from minio")
         resp.close(); resp.release_conn()
-        return raw_json
-        
+        return raw_json        
 
 
-def minio_put_userfile(filename: str, contents: str):
-    print('Minio adding userfile')
+def minio_put_file(filename: str, bucket_name: str, contents: str):
     raw_bytes = contents.encode('utf-8')
-    print('Raw bytes')
     byte_buffer = io.BytesIO(raw_bytes)
-    print('Buffer created')
     try:
-        print('trying to add userfile')
+        print('Minio writing file')
         resp = minio_client.put_object(
-            user_bucket,
+            bucket_name,
             filename,
             data=byte_buffer,
             content_type='application/json',
             length=len(raw_bytes)
         )
-        print('userfile created')
-        print(f"Minio write result: {str(resp.http_headers)}")
+        print(f"Minio write status: {str(resp.http_headers)}")
     except Exception as e:
         print(f"Error writing userfile to minio: {e}")
 
+
+def minio_get_userfile(filename: str):
+    return minio_get_file(filename, user_bucket)
+
+def minio_put_userfile(filename: str, contents: str):
+    minio_put_file(filename, user_bucket, contents)
+
+
+def minio_get_config(filename: str):
+    return minio_get_file(filename, config_bucket)
+
+def minio_get_config(filename: str, contents: str):
+    return minio_get_file(filename, config_bucket, contents)
 
 # ------------------------------- DATA CONTROL FUNCTIONS -------------------------------
 
@@ -393,6 +454,18 @@ def display_menu(id):
     return resp.content
 
 
+def send_currency_prompt(id):
+    currencies = json.loads(read_currency_config_data())
+    reply = json.dumps({'inline_keyboard': [list({'text': f"{curr}{currencies[curr]['sym']}", 'callback_data': curr } for curr in currencies)]})
+    mes_params = {
+    "chat_id": id,
+    "text": "👀 Выберите нужную валюту:",
+    "reply_markup": reply
+    }
+    resp = requests.post(url, params=mes_params)
+    return resp.content
+    
+
 def send_ordertype_prompt(id):
     reply = json.dumps({'inline_keyboard': [
             [{'text': 'Кроссовки', 'callback_data': 'sneaker'}, {'text': 'Обувь', 'callback_data': 'boot'}],
@@ -416,7 +489,7 @@ def send_orderprice_prompt(id):
     })
     mes_params = {
     "chat_id": id,
-    "text": "🏷️ Введите цену товара в юанях:",
+    "text": "🏷️ Введите цену товара:",
     "reply_markup": reply
     }
     resp = requests.post(url, params=mes_params)
@@ -449,6 +522,28 @@ def send_ordercost_prompt(id, price):
     resp = requests.post(url, params=mes_params)
     return resp.content
 
+
+# This was taken from telegram-bot repo
+# https://github.com/python-telegram-bot/python-telegram-bot/blob/master/telegram/helpers.py
+def escape_markdown(
+    text: str, version: int = 2, entity_type: Optional[str] = None
+) -> str:
+
+    if int(version) == 1:
+        escape_chars = r"_*`["
+    elif int(version) == 2:
+        if entity_type in ["pre", "code"]:
+            escape_chars = r"\`"
+        elif entity_type in ["text_link", "custom_emoji"]:
+            escape_chars = r"\)"
+        else:
+            escape_chars = r"\_*[]()~`>#+-=|{}.!"
+    else:
+        raise ValueError("Markdown version must be either 1 or 2!")
+
+    return re.sub(f"([{re.escape(escape_chars)}])", r"\\\1", text)
+
+
 def escape_special_chars(text):
    text = html.escape(text)
    return text
@@ -456,8 +551,8 @@ def escape_special_chars(text):
 def send_text(id, text="Test"):
     mes_params = {
     "chat_id": id,
-    "parse_mode": "HTML",
-    "text": escape_special_chars(text)
+    "parse_mode": "MarkdownV2",
+    "text": escape_markdown(text)
     }
     resp = requests.post(url, params=mes_params)
     return resp.content
@@ -506,6 +601,15 @@ def send_ordersize_prompt(id):
     }
     resp = requests.post(url, params=mes_params)
     return resp.content
+
+def send_currency_overview(id):
+    text = ''
+    currencies = json.loads(read_currency_config_data())
+    for curr in currencies:
+        text += f"**{curr}** {currencies[curr]['emoji']}: курс {currencies[curr]['sym']}/{currencies['RUB']['sym']} = {currencies[curr]['rate']}\n"
+    
+    resp = send_text(id, text)
+    return resp
 
 def send_orderfio_prompt(id):
     reply = json.dumps({'inline_keyboard': [
@@ -572,7 +676,10 @@ def send_help(id: str):
     text += f"/orderinfo <order_id>: Выводит информацию о конкретном заказе.\n"
     text += f"/deleteorder <order_id>: Удаляет заказ из системы.\n"
     text += f"/setcomission <значение>: Задаёт значение фиксированной комиссии.\n"
-    text += f"/setexchange <значение>: Задаёт значение рассчётного коэффиwиента.\n"
+    text += f"/setexchange <валюта> <значение>: Задаёт курс к RUB.\n"
+    text += f"/viewexchange: Выдаёт информацию о валютах.\n"
+    text += f"/setkgcost <значение>: Задаёт цену доставки за 1 кг"
+    text += f"/viewparams: Выводит значения, используемые при расчёте цены (комиссия, курс, и т.д.)"
     text += f"/ban <user_id>: Банит пользователя.\n"
     text += f"/unban <user_id>: Разбанивает пользователя, также может понизить пользователя с уровня админа.\n"
     text += f"/promote <user_id>: Делает пользователя админом.\n"
@@ -584,14 +691,17 @@ def send_help(id: str):
     send_text(id, text)
 
 def generate_order_info(order: dict[str, Any]) -> str:
-    text = f"Время заказа: {datetime.fromtimestamp(float(order['date']))}\n"
-    text += f"*Тип заказа:* {order['data']['product_type']}\n"
+    text = f"*Тип заказа:* {order['data']['product_type']}\n"
     text += f"*Ссылка на товар:* {str(order['data']['product_link'])}\n"
     text += f"*Размер товара:* {order['data']['product_size']}\n"
     text += f"*Стоимость заказа (в юанях):* {order['data']['price']}¥\n"
     text += f"*ФИО клиента:* {order['data']['fio']}\n"
     text += f"*Номер телефона:* {order['data']['phone_number']}\n"
     text += f"*Пункт СДЕК:* {order['data']['ship_to']}\n"
+    try:
+        text += f"Время заказа: {datetime.fromtimestamp(float(order['date']))}\n"
+    except Exception as e:
+        pass
     return text
 
 def send_admin_prompt(id, order):
@@ -610,7 +720,7 @@ def send_admin_prompt(id, order):
     }
     resp = requests.post(url, params=mes_params)
     if not resp.ok:
-        text += f'В связи с настройками приватности пользователя, сгенерировать ссылку на его профиль невозможно\n'
+        text += f"В связи с настройками приватности пользователя, сгенерировать ссылку на профиль {order['user_id']} невозможно\n"
         reply = json.dumps({'inline_keyboard': [
                 [{'text': '✔️ Подтвердить', 'callback_data': f"confirm{order['_id']}"}, {'text': '❌ Отменить', 'callback_data': f"decline{order['_id']}"}],
             ]
@@ -702,17 +812,17 @@ def send_user_info(id: str, lookup_id: str):
     if user is None:
         send_text(id, "Пользователь с таким id не найден")
     text = f"Информация о пользователе:\n"
-    text += f"Id пользователя: {user['_id']}\n"
+    text += f"Id пользователя: `{user['_id']}`\n"
     text += f"Уровень пользователя: {user['lvl']}\n"
     text += f"Статус пользователя в системе: {user['state']}\n"
     text += f"Подтверждённые заказы:\n"
     user_orders = fetch_confirmed_orders(user['_id'])
     for order in user_orders:
-        text += f"{order['_id']}\n"
+        text += f"`{order['_id']}`\n"
     text += f"Заказы в модерации:\n"
     user_orders = fetch_orders(user['_id'])
     for order in user_orders:
-        text += f"{order['_id']}\n"
+        text += f"`{order['_id']}`\n"
     
     send_text(id, text)
 
@@ -743,15 +853,15 @@ def display_order(id, order):
     }
     resp = requests.post(url, params=mes_params)
     if not resp.ok:
-        text += f'В связи с настройками приватности пользователя, сгенерировать ссылку на его профиль невозможно\n'
+        text += f"В связи с настройками приватности пользователя, сгенерировать ссылку на профиль `{order['user_id']}` невозможно\n"
         resp = send_text(id, text) 
     return resp.content
     
 
-def send_parameterchange_info(id, param):
+def send_parameterchange_info(id, curr, param):
     mes_params = {
         "chat_id": id,
-        "text": f"⏩ Курс ¥/₽ изменён на `{param}`",
+        "text": f"⏩ Курс {curr}/₽ изменён на `{param}`",
         "parse_mode": "markdown"
     }
     resp = requests.post(url, params=mes_params)
@@ -832,7 +942,7 @@ def chatbot(in_message: sendMessage):
                 if (user['lvl'] == 'banned'):
                     return value
                 try:
-                    value = handle_queries(query)
+                    value =  handle_queries(query)
                 except Exception as e:
                     value = e
             else:
@@ -893,6 +1003,8 @@ def handle_command(mess):
         if user["lvl"] == "admin":
             if mess["text"] == "/help":
                 command_answer = send_help(chat_id)
+            if mess["text"] == "/viewexchange":
+                command_answer = send_currency_overview(chat_id)
             if mess["text"].startswith('/deleteorder'):
                 mess_split = mess["text"].split()
                 if len(mess_split) < 2:
@@ -983,15 +1095,16 @@ def handle_command(mess):
                 else:
                     command_answer = send_text(chat_id, "🙂 Нет активных заказов")
             elif mess["text"].startswith("/setexchange"):
-                if check_regex('\/setexchange {1}(\d{1,100})+(\.\d{1,100})?$', mess["text"]):
-                    mess_split = mess["text"].split(" ")
-                    change = float(mess_split[1])
+                mess_split = tuple(elem.strip() for elem in mess["text"].split())
+                sup_currencies = get_supported_currencies()
+                if check_regex('(\d{1,200})+(\.\d{1,100})?', mess_split[2]) and mess_split[1] in sup_currencies:
+                    change = float(mess_split[2])
                     try:
-                        set_price_var("change", change)
+                        set_currency_rate(mess_split[1], change)
                     except Exception as e:
                         command_answer = send_text(chat_id, f"Ошибка: {str(e)}")
                     else:
-                        command_answer = send_parameterchange_info(chat_id, change)
+                        command_answer = send_parameterchange_info(chat_id, mess_split[1], change)
                 else:
                     command_answer = send_text(chat_id, "Ошибка в вызове команды.")
             elif mess["text"].startswith("/setkgcost"):
@@ -1030,7 +1143,7 @@ def handle_number(mess):
         if(check_regex('^((8|\+7)[\- ]?)?(\(?\d{3}\)?[\- ]?)?[\d\- ]{7,10}$', mess["text"])):
             modify_userfile(chat_id, str(mess["text"]), "number", "order")
             try:
-                final_price = int(order_formula(userdata["order"]["type"], userdata["order"]["price"]))
+                final_price = int(order_formula(userdata["order"]))
             except Exception as e:
                 resp = (send_text(chat_id, "Ошибка при расчете итоговой стоимости. Попробуйте еще раз"), send_orderprice_prompt(chat_id))
             else:
@@ -1063,9 +1176,8 @@ def handle_input(mess):
     if curr_state == "CALC_PRICE":
         if(check_regex("([1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9])", mess["text"])):
             modify_userfile(chat_id, int(mess["text"]), "price", "calc")
-            userdata = get_userfile(chat_id)
             try:
-                resp = send_ordercost_prompt(chat_id, order_formula(userdata["calc"]["type"], userdata["calc"]["price"]))
+                resp = send_ordercost_prompt(chat_id, order_formula(userdata["calc"]))
             except Exception as e:
                 resp = (send_text(chat_id, "Ошибка при расчёте итоговой стоимости. Попробуйте еще раз."), send_orderprice_prompt(chat_id))
             else:
@@ -1085,7 +1197,7 @@ def handle_input(mess):
         if(check_regex(regex_str, mess["text"])):
             modify_userfile(chat_id, str(mess["text"]), "size", "order")
             resp = main_send_orderprice_prompt(chat_id)
-            change_user_state(chat_id, "ORDER_PRICE")
+            change_user_state(chat_id, "ORDER_CURRENCY")
         else:
             resp = (send_text(chat_id, "✖️ Неверное значение. Попробуйте еще раз."), send_ordersize_prompt(chat_id))
     elif curr_state == "ORDER_PRICE":
@@ -1113,7 +1225,7 @@ def handle_input(mess):
         if(check_regex('^((8|\+7)[\- ]?)?(\(?\d{3}\)?[\- ]?)?[\d\- ]{7,10}$', mess["text"])):
             modify_userfile(chat_id, str(mess["text"]), "number", "order")
             try:
-                final_price = int(order_formula(userdata["order"]["type"], userdata["order"]["price"]))
+                final_price = int(order_formula(userdata["order"]))
             except Exception as e:
                 resp = (send_text(chat_id, send_text(chat_id, "Ошибка при расчёте формулы. Попробуйте еще раз")), send_ordernumber_prompt(chat_id))
             else:
@@ -1123,7 +1235,7 @@ def handle_input(mess):
         else:
             resp = (send_text(chat_id, "✖️ Неверное значение. Попробуйте еще раз."), send_ordernumber_prompt(chat_id))
     elif curr_state == "ORDER_LINK":
-        if(check_regex('https:\/\/dw4\.co\/t\/A\/[a-zA-Z0-9]{8,10}$', mess["text"]) or check_regex('https:\/\/dwz\.cn\/[a-zA-Z0-9]{8,10}$', mess["text"])):
+        if(True): #(check_regex('https:\/\/dw4\.co\/t\/A\/[a-zA-Z0-9]{8,10}$', mess["text"]) or check_regex('https:\/\/dwz\.cn\/[a-zA-Z0-9]{8,10}$', mess["text"])):
             modify_userfile(chat_id, str(mess["text"]), "link", "order")
             resp = send_ordersize_prompt(chat_id)
             change_user_state(chat_id,  "ORDER_SIZE")
@@ -1163,8 +1275,18 @@ def handle_queries(quer):
     elif curr_state == "CALC_ORDERTYPE":
         if quer["data"] in item_weight:
             modify_userfile(chat_id, quer["data"], "type", "calc")
+            resp = send_currency_prompt(chat_id)
+            change_user_state(chat_id, "CALC_CURRENCY")
+    elif curr_state == "CALC_CURRENCY":
+        if quer["data"]:
+            modify_userfile(chat_id, quer["data"], "currency", "calc")
             resp = send_orderprice_prompt(chat_id)
             change_user_state(chat_id, "CALC_PRICE")
+    elif curr_state == "ORDER_CURRENCY":
+        if quer["data"]:
+            modify_userfile(chat_id, quer["data"], "currency", "order")
+            resp = send_currency_prompt(chat_id)
+            change_user_state(chat_id, "ORDER_PRICE")
     elif curr_state == "ORDER_CAPTCHA":
         if quer["data"] in emojis:
             if get_userfile(chat_id)["order"]["captcha_answer"] == quer["data"]:

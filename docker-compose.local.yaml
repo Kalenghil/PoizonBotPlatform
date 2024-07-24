@@ -40,9 +40,7 @@ services:
     restart: always
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: kalenghil/monvesium-bot:testing-local
     container_name: poizonbot
     env_file:
       - .env
@@ -60,7 +58,7 @@ services:
       test: ["CMD", "curl", "-I", "0.0.0.0:8000"]
       timeout: 30s
       retries: 10
-    restart: always
+    #restart: always
 
 volumes:
   mongodb-data:
