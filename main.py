@@ -161,13 +161,23 @@ def set_price_var(key: str, value: float):
 
 
 # ================================= CURRENCY ===================================
+def reset_currency_config():
+    default_currency = {
+        "RUB": {"title": "рублях",   "rate": 1.0,   "emoji": "🇷🇺", "sym": "₽"},
+        "EUR": {"title": "евро",     "rate": 100.0, "emoji": "🇪🇺", "sym": "€"},
+        "USD": {"title": "долларах", "rate": 92.0,  "emoji": "🇺🇸", "sym": "$"},
+        "JPY": {"title": "иенах",    "rate": 0.6,   "emoji": "🇯🇵", "sym": "¥"},
+        "CNY": {"title": "юанях",    "rate": 13.0,  "emoji": "🇨🇳", "sym": "¥"},
+    }
+    store_currency_config(json.dumps(default_currency))
+
 def read_currency_config_data():
     default_currency = {
-        "RUB": {"title": "Рубль",  "rate": 1.0,   "emoji": "🇷🇺", "sym": "₽"},
-        "EUR": {"title": "Евро",   "rate": 100.0, "emoji": "🇪🇺", "sym": "€"},
-        "USD": {"title": "Доллар", "rate": 92.0,  "emoji": "🇺🇸", "sym": "$"},
-        "JPY": {"title": "Иена",   "rate": 0.6,   "emoji": "🇯🇵", "sym": "¥"},
-        "CNY": {"title": "Юань",   "rate": 13.0,  "emoji": "🇨🇳", "sym": "¥"},
+        "RUB": {"title": "рублях",   "rate": 1.0,   "emoji": "🇷🇺", "sym": "₽"},
+        "EUR": {"title": "евро",     "rate": 100.0, "emoji": "🇪🇺", "sym": "€"},
+        "USD": {"title": "долларах", "rate": 92.0,  "emoji": "🇺🇸", "sym": "$"},
+        "JPY": {"title": "иенах",    "rate": 0.6,   "emoji": "🇯🇵", "sym": "¥"},
+        "CNY": {"title": "юанях",    "rate": 13.0,  "emoji": "🇨🇳", "sym": "¥"},
     }
     return read_config_data(currency_config_path, default_currency)
 
@@ -195,7 +205,7 @@ def set_currency_rate(currency_name: str, new_rate: float):
 
 def order_formula(params: dict[str, float]):
     currency, price, type = params['currency'], params['price'], params['type']
-    price_vars = get_price_vars('kg_cost', 'change')
+    price_vars = get_price_vars('kg_cost', 'commission')
     currency_exchg_rate = get_currency_rate(currency)
     if price_vars is None or currency_exchg_rate is None:
         raise KeyError
@@ -465,6 +475,16 @@ def send_currency_prompt(id):
     resp = requests.post(url, params=mes_params)
     return resp.content
     
+    
+def send_items(id):
+    items = items_text
+    mes_params = {
+    "chat_id": id,
+    "parse_mode": "MarkdownV2",
+    "text": escape_markdown(items)
+    }
+    resp = requests.post(url, params=mes_params)
+    return resp.content
 
 def send_ordertype_prompt(id):
     reply = json.dumps({'inline_keyboard': [
@@ -482,43 +502,52 @@ def send_ordertype_prompt(id):
     resp = requests.post(url, params=mes_params)
     return resp.content
 
-def send_orderprice_prompt(id):
+def send_orderprice_prompt(id, curr_name: str):
     reply = json.dumps({'inline_keyboard': [
             [{'text': 'ℹ️ Как узнать цену своего размера?', 'callback_data': 'instruction'}]
         ]
     })
+    currency = json.loads(read_currency_config_data())
     mes_params = {
     "chat_id": id,
-    "text": "🏷️ Введите цену товара:",
+    "text": f"🏷️ Введите цену товара в {currency['title']} {currency['emoji']}:",
     "reply_markup": reply
     }
     resp = requests.post(url, params=mes_params)
     return resp.content
 
-def main_send_orderprice_prompt(id):
+def main_send_orderprice_prompt(id, curr_name):
     reply = json.dumps({'inline_keyboard': [
             [{'text': '❌ Отменить заказ', 'callback_data': 'mainmenu'}]
         ]
     })
+    currency = json.loads(read_currency_config_data())[curr_name]
     mes_params = {
     "chat_id": id,
-    "text": "🏷️ Введите цену товара в юанях:",
+    "text": f"🏷️ Введите цену товара в {currency['title']} {currency['emoji']}:",
     "reply_markup": reply
     }
     resp = requests.post(url, params=mes_params)
     return resp.content
 
-def send_ordercost_prompt(id, price):
+def send_ordercost_prompt(id, price, is_calc=True):
     reply = json.dumps({'inline_keyboard': [
             [{'text': '↩️ Главное меню', 'callback_data': 'mainmenu'}]
         ]
     })
-    mes_params = {
-    "chat_id": id,
-    "text": f"Итоговая стоимость в рублях: `{int(price)}₽`\n Цена без учета доставки по РФ.",
-    "parse_mode": "markdown",
-    "reply_markup": reply
-    }
+    if is_calc:
+        mes_params = {
+            "chat_id": id,
+            "text": f"Итоговая стоимость в рублях: `{int(price)}₽`\n Цена без учета доставки по РФ.",
+            "parse_mode": "markdown",
+            "reply_markup": reply
+        }
+    else:
+        mes_params = {
+            "chat_id": id,
+            "text": f"Итоговая стоимость в рублях: `{int(price)}₽`\n Цена без учета доставки по РФ.",
+            "parse_mode": "markdown",
+        }
     resp = requests.post(url, params=mes_params)
     return resp.content
 
@@ -694,7 +723,7 @@ def generate_order_info(order: dict[str, Any]) -> str:
     text = f"*Тип заказа:* {order['data']['product_type']}\n"
     text += f"*Ссылка на товар:* {str(order['data']['product_link'])}\n"
     text += f"*Размер товара:* {order['data']['product_size']}\n"
-    text += f"*Стоимость заказа (в юанях):* {order['data']['price']}¥\n"
+    text += f"*Стоимость заказа (в рублях):* {order['data']['price']}₽\n"
     text += f"*ФИО клиента:* {order['data']['fio']}\n"
     text += f"*Номер телефона:* {order['data']['phone_number']}\n"
     text += f"*Пункт СДЕК:* {order['data']['ship_to']}\n"
@@ -993,7 +1022,7 @@ def handle_command(mess):
     elif mess["text"] == "/about":
         command_answer = send_about(chat_id)
     elif mess["text"] == "/items":
-        command_answer = send_text(chat_id, str(items_text))
+        command_answer = send_items(chat_id)
     elif mess["text"] == "/contact":
         command_answer = send_contact(chat_id)
     elif mess["text"] == "/faq":
@@ -1097,6 +1126,9 @@ def handle_command(mess):
             elif mess["text"].startswith("/setexchange"):
                 mess_split = tuple(elem.strip() for elem in mess["text"].split())
                 sup_currencies = get_supported_currencies()
+                if len(mess_split) <= 2:
+                    command_answer = send_text(chat_id, "Ошибка в вызове команды.")
+                    return
                 if check_regex('(\d{1,200})+(\.\d{1,100})?', mess_split[2]) and mess_split[1] in sup_currencies:
                     change = float(mess_split[2])
                     try:
@@ -1145,7 +1177,8 @@ def handle_number(mess):
             try:
                 final_price = int(order_formula(userdata["order"]))
             except Exception as e:
-                resp = (send_text(chat_id, "Ошибка при расчете итоговой стоимости. Попробуйте еще раз"), send_orderprice_prompt(chat_id))
+                resp = (send_text(chat_id, "Ошибка при расчете итоговой стоимости. Попробуйте еще раз"),
+                        send_orderprice_prompt(chat_id, userdata["currency"]))
             else:
                 send_text(chat_id, f"Итоговая стоимость в рублях: `{final_price}₽`\n  Цена без учета доставки по РФ.")
                 resp = send_orderconfirm_prompt(chat_id)
@@ -1176,14 +1209,17 @@ def handle_input(mess):
     if curr_state == "CALC_PRICE":
         if(check_regex("([1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9])", mess["text"])):
             modify_userfile(chat_id, int(mess["text"]), "price", "calc")
+            userdata = get_userfile(chat_id)
             try:
                 resp = send_ordercost_prompt(chat_id, order_formula(userdata["calc"]))
             except Exception as e:
-                resp = (send_text(chat_id, "Ошибка при расчёте итоговой стоимости. Попробуйте еще раз."), send_orderprice_prompt(chat_id))
+                resp = (send_text(chat_id, "Ошибка при расчёте итоговой стоимости. Попробуйте еще раз."),
+                        send_orderprice_prompt(chat_id, userdata["currency"]))
             else:
                 change_user_state(chat_id, "MAIN_MENU")
         else:
-            resp = (send_text(chat_id, "✖️ Неверное значение. Попробуйте еще раз."), send_orderprice_prompt(chat_id))
+            resp = (send_text(chat_id, "✖️ Неверное значение. Попробуйте еще раз."),
+                    send_orderprice_prompt(chat_id, userdata["currency"]))
     elif curr_state == "ORDER_SIZE":
         type = userdata["order"]["type"]
         regex_str = "^.{1,4095}$"
@@ -1196,17 +1232,21 @@ def handle_input(mess):
 
         if(check_regex(regex_str, mess["text"])):
             modify_userfile(chat_id, str(mess["text"]), "size", "order")
-            resp = main_send_orderprice_prompt(chat_id)
+            resp = send_currency_prompt(chat_id)
             change_user_state(chat_id, "ORDER_CURRENCY")
         else:
             resp = (send_text(chat_id, "✖️ Неверное значение. Попробуйте еще раз."), send_ordersize_prompt(chat_id))
     elif curr_state == "ORDER_PRICE":
         if(check_regex("([1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9])", mess["text"])):
-            modify_userfile(chat_id, int(mess["text"]), "price", "order")
+            modify_userfile(chat_id, int(mess['text']), "price", "order")
+            userdata = get_userfile(chat_id)
+            price = int(order_formula(userdata['order']))
+            send_ordercost_prompt(chat_id, price, is_calc=False)
             resp = send_orderfio_prompt(chat_id)
             change_user_state(chat_id, "ORDER_FIO")
         else:
-            resp = (send_text(chat_id, "✖️ Неверное значение. Попробуйте еще раз."), main_send_orderprice_prompt(chat_id))
+            resp = (send_text(chat_id, "✖️ Неверное значение. Попробуйте еще раз."),
+                    main_send_orderprice_prompt(chat_id), userdata['currency'])
     elif curr_state == "ORDER_FIO":
         if(check_regex("^.{1,4095}$", mess["text"])):
             modify_userfile(chat_id, str(mess["text"]), "fio", "order")
@@ -1278,14 +1318,14 @@ def handle_queries(quer):
             resp = send_currency_prompt(chat_id)
             change_user_state(chat_id, "CALC_CURRENCY")
     elif curr_state == "CALC_CURRENCY":
-        if quer["data"]:
+        if quer["data"] in get_supported_currencies():
             modify_userfile(chat_id, quer["data"], "currency", "calc")
-            resp = send_orderprice_prompt(chat_id)
+            resp = send_orderprice_prompt(chat_id, quer["data"])
             change_user_state(chat_id, "CALC_PRICE")
     elif curr_state == "ORDER_CURRENCY":
-        if quer["data"]:
+        if quer["data"] in get_supported_currencies():
             modify_userfile(chat_id, quer["data"], "currency", "order")
-            resp = send_currency_prompt(chat_id)
+            resp = main_send_orderprice_prompt(chat_id, quer['data'])
             change_user_state(chat_id, "ORDER_PRICE")
     elif curr_state == "ORDER_CAPTCHA":
         if quer["data"] in emojis:
@@ -1301,7 +1341,7 @@ def handle_queries(quer):
     elif curr_state == "ORDER_CONFIRM":
         if quer["data"] == "acceptorder":
             userdata = get_userfile(chat_id)
-            order = add_order(str(chat_id),str(userdata["order"]["type"]), str(userdata["order"]["link"]), str(userdata["order"]["size"]), str(userdata["order"]["price"]), str(userdata["order"]["fio"]), str(userdata["order"]["adress"]), str(userdata["order"]["number"]))
+            order = add_order(str(chat_id),str(userdata["order"]["type"]), str(userdata["order"]["link"]), str(userdata["order"]["size"]), str(order_formula(userdata["order"])), str(userdata["order"]["fio"]), str(userdata["order"]["adress"]), str(userdata["order"]["number"]))
             resp = send_text(chat_id, f"😃 Спасибо за Ваш заказ!\n\n Заказ номер `{order['_id']}` зарегестрирован и передан на модерацию")
             admin_list = get_admins()
             if admin_list is not None:
