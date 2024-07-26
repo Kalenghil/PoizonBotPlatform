@@ -5,7 +5,7 @@ from database_mongo import *
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from typing import Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 import minio
 import requests
 import secrets
@@ -113,6 +113,7 @@ def check_regex(regex, string):
 
 price_config_path = 'price_conf.json'
 currency_config_path = 'currency_conf.json'
+last_currency_update_path = 'last_currency_update.txt'
 
 
 def read_config_data(filename: str, config_default: dict[str, Any]) -> str:
@@ -171,39 +172,71 @@ def reset_currency_config():
     }
     store_currency_config(json.dumps(default_currency))
 
-def read_currency_config_data():
+def _read_currency_config_data():
     default_currency = {
-        "RUB": {"title": "рублях",   "rate": 1.0,   "emoji": "🇷🇺", "sym": "₽"},
-        "EUR": {"title": "евро",     "rate": 100.0, "emoji": "🇪🇺", "sym": "€"},
-        "USD": {"title": "долларах", "rate": 92.0,  "emoji": "🇺🇸", "sym": "$"},
-        "JPY": {"title": "иенах",    "rate": 0.6,   "emoji": "🇯🇵", "sym": "¥"},
-        "CNY": {"title": "юанях",    "rate": 13.0,  "emoji": "🇨🇳", "sym": "¥"},
-    }
+            "RUB": {"title": "рублях",   "rate": 1.0,   "emoji": "🇷🇺", "sym": "₽"},
+            "EUR": {"title": "евро",     "rate": 100.0, "emoji": "🇪🇺", "sym": "€"},
+            "USD": {"title": "долларах", "rate": 92.0,  "emoji": "🇺🇸", "sym": "$"},
+            "JPY": {"title": "иенах",    "rate": 0.6,   "emoji": "🇯🇵", "sym": "¥"},
+            "CNY": {"title": "юанях",    "rate": 13.0,  "emoji": "🇨🇳", "sym": "¥"},
+        }
     return read_config_data(currency_config_path, default_currency)
 
-def get_currency_rate(currency_name: str) -> float:
-    currency_config = json.loads(read_currency_config_data())
+def needs_to_update():
+    if not minio_file_exists(last_currency_update_path, config_bucket):
+        yesterday = datetime.today() - timedelta(days=1)
+        yesterday = yesterday.date().isoformat()
+        minio_put_file(last_currency_update_path, config_bucket, yesterday)
+    
+    last_update_iso = minio_get_config(last_currency_update_path)
+    last_update = datetime.fromisoformat(last_update_iso)
+    if last_update.date() != datetime.today().date():
+        return True
+    return False
+
+
+def get_currency_config_data():
+    if needs_to_update():
+        update_currency_form_cbr()
+    
+    return _read_currency_config_data()
+
+def get_currency_rate(currency_name: str) -> float | None:
+    currency_config = json.loads(get_currency_config_data())
     if currency_name in currency_config:
         return currency_config[currency_name]["rate"]
     else:
         return None
 
-def get_supported_currencies() -> Tuple[str]:
-    curr_config: dict[str, Any] = json.loads(read_currency_config_data())
-    return curr_config.keys()
-    
+def get_supported_currencies() -> tuple[str, ...]:
+    curr_config: dict[str, Any] = json.loads(get_currency_config_data())
+    return tuple(curr_config.keys())
+
 
 def store_currency_config(currency_config: str):
     store_config_data(currency_config_path, currency_config)
 
 def set_currency_rate(currency_name: str, new_rate: float):
-    currency_config = json.loads(read_currency_config_data())
+    currency_config = json.loads(get_currency_config_data())
     if currency_name in currency_config:
         currency_config[currency_name]['rate'] = new_rate
     store_currency_config(json.dumps(currency_config))
 
+def update_currency_form_cbr():
+    resp = requests.get("https://www.cbr-xml-daily.ru/latest.js").json()
+    cbr_rates = resp['rates']
+       
+    minio_put_file(last_currency_update_path, config_bucket, resp['date'])
+    currency_conf = json.loads(_read_currency_config_data())
+    for curr in currency_conf:
+        if curr == 'RUB':
+            pass
+            
+        currency_conf[curr]['rate'] = (1 / cbr_rates[curr]) * (1. + exchg_percent / 100)
+    store_currency_config(currency_conf)    
 
-def order_formula(params: dict[str, float]):
+
+def order_formula(params: dict[str, Any]):
     currency, price, type = params['currency'], params['price'], params['type']
     price_vars = get_price_vars('kg_cost', 'commission')
     currency_exchg_rate = get_currency_rate(currency)
@@ -264,7 +297,7 @@ def minio_get_file(filename: str, bucket_name: str):
     else:
         print(f"File {filename} got from minio")
         resp.close(); resp.release_conn()
-        return raw_json        
+        return raw_json
 
 
 def minio_put_file(filename: str, bucket_name: str, contents: str):
@@ -293,9 +326,6 @@ def minio_put_userfile(filename: str, contents: str):
 
 def minio_get_config(filename: str):
     return minio_get_file(filename, config_bucket)
-
-def minio_get_config(filename: str, contents: str):
-    return minio_get_file(filename, config_bucket, contents)
 
 # ------------------------------- DATA CONTROL FUNCTIONS -------------------------------
 
@@ -402,12 +432,12 @@ def delete_order(id, order_id, cause: str | None =None):
         return resp
     else:
         db_delete_order(order_id)
-    
+
     if cause is not None:
         send_text(order['user_id'], f"Ваш заказ был отменён по причине: {cause}")
     send_text(id, f'Заказ {order_id} был удалён')
-    
-    
+
+
 def fetch_all_users():
     users = db_get_all_users()
     return users if users else None
@@ -465,7 +495,7 @@ def display_menu(id):
 
 
 def send_currency_prompt(id):
-    currencies = json.loads(read_currency_config_data())
+    currencies = json.loads(get_currency_config_data())
     reply = json.dumps({'inline_keyboard': [list({'text': f"{curr}{currencies[curr]['sym']}", 'callback_data': curr } for curr in currencies)]})
     mes_params = {
     "chat_id": id,
@@ -474,8 +504,8 @@ def send_currency_prompt(id):
     }
     resp = requests.post(url, params=mes_params)
     return resp.content
-    
-    
+
+
 def send_items(id):
     items = items_text
     mes_params = {
@@ -507,7 +537,7 @@ def send_orderprice_prompt(id, curr_name: str):
             [{'text': 'ℹ️ Как узнать цену своего размера?', 'callback_data': 'instruction'}]
         ]
     })
-    currency = json.loads(read_currency_config_data())
+    currency = json.loads(get_currency_config_data())
     mes_params = {
     "chat_id": id,
     "text": f"🏷️ Введите цену товара в {currency['title']} {currency['emoji']}:",
@@ -521,7 +551,7 @@ def main_send_orderprice_prompt(id, curr_name):
             [{'text': '❌ Отменить заказ', 'callback_data': 'mainmenu'}]
         ]
     })
-    currency = json.loads(read_currency_config_data())[curr_name]
+    currency = json.loads(get_currency_config_data())[curr_name]
     mes_params = {
     "chat_id": id,
     "text": f"🏷️ Введите цену товара в {currency['title']} {currency['emoji']}:",
@@ -633,10 +663,10 @@ def send_ordersize_prompt(id):
 
 def send_currency_overview(id):
     text = ''
-    currencies = json.loads(read_currency_config_data())
+    currencies = json.loads(get_currency_config_data())
     for curr in currencies:
         text += f"**{curr}** {currencies[curr]['emoji']}: курс {currencies[curr]['sym']}/{currencies['RUB']['sym']} = {currencies[curr]['rate']}\n"
-    
+
     resp = send_text(id, text)
     return resp
 
@@ -761,7 +791,7 @@ def send_admin_prompt(id, order):
         "reply_markup": reply
         }
         resp = requests.post(url, params=mes_params)
-    
+
     return resp
 
 def send_decline_prompt(id, order):
@@ -839,7 +869,8 @@ def send_about(id):
 def send_user_info(id: str, lookup_id: str):
     user = get_user(str(lookup_id))
     if user is None:
-        send_text(id, "Пользователь с таким id не найден")
+        resp = send_text(id, "Пользователь с таким id не найден")
+        return resp
     text = f"Информация о пользователе:\n"
     text += f"Id пользователя: `{user['_id']}`\n"
     text += f"Уровень пользователя: {user['lvl']}\n"
@@ -852,7 +883,7 @@ def send_user_info(id: str, lookup_id: str):
     user_orders = fetch_orders(user['_id'])
     for order in user_orders:
         text += f"`{order['_id']}`\n"
-    
+
     send_text(id, text)
 
 def send_contact(id):
@@ -883,9 +914,9 @@ def display_order(id, order):
     resp = requests.post(url, params=mes_params)
     if not resp.ok:
         text += f"В связи с настройками приватности пользователя, сгенерировать ссылку на профиль `{order['user_id']}` невозможно\n"
-        resp = send_text(id, text) 
+        resp = send_text(id, text)
     return resp.content
-    
+
 
 def send_parameterchange_info(id, curr, param):
     mes_params = {
@@ -1038,7 +1069,7 @@ def handle_command(mess):
                 mess_split = mess["text"].split()
                 if len(mess_split) < 2:
                     command_answer = send_text(chat_id, "Ошибка при обработке команды")
-                else:    
+                else:
                     lookup_id = mess_split[1].strip()
                     delete_order(chat_id, lookup_id)
             if mess["text"].startswith('/ban'):

@@ -31,7 +31,7 @@ def db_add_user(user: dict[str, str]):
     users = mongo_database.users
     users.replace_one({'_id': user['_id']}, user, upsert=True)
     
-def db_get_user(id: str):
+def db_get_user(id: str) -> dict[str, Any]:
     db = mongo_database
     users = db.users
     

@@ -2,6 +2,8 @@ import os
 
 
 def proceed_bool_env(env):
+    if env not in envs:
+       return None
     if env.lower() in ['true', '1']: return True
     elif env.lower() in ['false', '0']: return False
     else: return None
@@ -40,3 +42,5 @@ review_link = envs['REVIEWLINK'] if 'REVIEWLINK' in envs else "https://www.youtu
 chat_link = envs['CHATLINK'] if 'CHATLINK' in envs else "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 admin_id = envs['ADMINID'] if 'ADMINID' in envs else None
 use_extended_formula = proceed_bool_env(envs['EXTFORMULA']) if 'EXTFORMULA' in envs and proceed_bool_env(envs['EXTFORMULA']) is not None else True
+use_cbr_exchange = proceed_bool_env(envs['CBIEXHANGE']) if proceed_bool_env(envs['CBIEXHANGE']) is not None else True
+exchg_percent = float(proceed_env('EXCHANGEFEE', '3.0'))
