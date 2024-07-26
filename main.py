@@ -534,7 +534,7 @@ def send_ordertype_prompt(id):
 
 def send_orderprice_prompt(id, curr_name: str):
     reply = json.dumps({'inline_keyboard': [
-            [{'text': 'ℹ️ Как узнать цену своего размера?', 'callback_data': 'instruction'}]
+            [{'text': 'ℹ️ Как узнать цену своего размера?', 'url': 'https://telegra.ph/Kak-uznat-stoimost-tovara-nuzhnogo-razmera-07-25'}]
         ]
     })
     currency = json.loads(get_currency_config_data())
