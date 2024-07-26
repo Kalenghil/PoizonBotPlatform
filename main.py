@@ -1,3 +1,4 @@
+import math
 from EmojiCaptcha import EmojiCaptcha
 from envs import *
 from database_mongo import *
@@ -135,6 +136,7 @@ def read_price_config_data():
     default_price_config = {
         "kg_cost": 750.0,
         "commission": 700,
+        "exchange_fee": 3.0
     }
     return read_config_data(price_config_path, default_price_config)
 
@@ -197,7 +199,7 @@ def needs_to_update():
 
 def get_currency_config_data():
     if needs_to_update():
-        update_currency_form_cbr()
+        update_currency_from_cbr()
     
     return _read_currency_config_data()
 
@@ -222,18 +224,24 @@ def set_currency_rate(currency_name: str, new_rate: float):
         currency_config[currency_name]['rate'] = new_rate
     store_currency_config(json.dumps(currency_config))
 
-def update_currency_form_cbr():
+
+def round(smth: float):
+    return math.ceil(smth * 100) / 100
+
+
+def update_currency_from_cbr():
     resp = requests.get("https://www.cbr-xml-daily.ru/latest.js").json()
     cbr_rates = resp['rates']
        
-    minio_put_file(last_currency_update_path, config_bucket, resp['date'])
     currency_conf = json.loads(_read_currency_config_data())
+    exchg_percent = get_price_var('exchange_fee')
     for curr in currency_conf:
         if curr == 'RUB':
-            pass
-            
-        currency_conf[curr]['rate'] = (1 / cbr_rates[curr]) * (1. + exchg_percent / 100)
-    store_currency_config(currency_conf)    
+            continue
+        
+        currency_conf[curr]['rate'] = round((1 / cbr_rates[curr]) * (1. + exchg_percent / 100))
+    store_currency_config(json.dumps(currency_conf))    
+    minio_put_file(last_currency_update_path, config_bucket, resp['date'])
 
 
 def order_formula(params: dict[str, Any]):
@@ -496,7 +504,7 @@ def display_menu(id):
 
 def send_currency_prompt(id):
     currencies = json.loads(get_currency_config_data())
-    reply = json.dumps({'inline_keyboard': [list({'text': f"{curr}{currencies[curr]['sym']}", 'callback_data': curr } for curr in currencies)]})
+    reply = json.dumps({'inline_keyboard': [list({'text': f"{currencies[curr]['emoji']}{curr} {currencies[curr]['sym']}", 'callback_data': curr } for curr in currencies)]})
     mes_params = {
     "chat_id": id,
     "text": "👀 Выберите нужную валюту:",
@@ -532,12 +540,24 @@ def send_ordertype_prompt(id):
     resp = requests.post(url, params=mes_params)
     return resp.content
 
+def send_params_overview(id):
+    price_vars = json.loads(minio_get_config(price_config_path))
+    mes_params = {
+    "chat_id": id,
+    "text": '\n'.join([escape_markdown(f"{var}: {price_vars[var]}") for var in price_vars]),
+    "parse_mode": "MarkdownV2",
+    }
+    resp = requests.post(url, params=mes_params)
+    return resp.content
+    
+
+
 def send_orderprice_prompt(id, curr_name: str):
     reply = json.dumps({'inline_keyboard': [
             [{'text': 'ℹ️ Как узнать цену своего размера?', 'url': 'https://telegra.ph/Kak-uznat-stoimost-tovara-nuzhnogo-razmera-07-25'}]
         ]
     })
-    currency = json.loads(get_currency_config_data())
+    currency = json.loads(get_currency_config_data())[curr_name]
     mes_params = {
     "chat_id": id,
     "text": f"🏷️ Введите цену товара в {currency['title']} {currency['emoji']}:",
@@ -665,7 +685,7 @@ def send_currency_overview(id):
     text = ''
     currencies = json.loads(get_currency_config_data())
     for curr in currencies:
-        text += f"**{curr}** {currencies[curr]['emoji']}: курс {currencies[curr]['sym']}/{currencies['RUB']['sym']} = {currencies[curr]['rate']}\n"
+        text += f"{curr} {currencies[curr]['emoji']}: курс {currencies[curr]['sym']}/{currencies['RUB']['sym']} = {currencies[curr]['rate']}\n"
 
     resp = send_text(id, text)
     return resp
@@ -729,23 +749,25 @@ def send_help(id: str):
     text = f"Краткая справка по командам для администрации бота:\n"
     text += f"/help: Выводит справку\n"
     text += f"/allorders [=user_id]: Выводит все неподтверждённые заказы,\n если предоставлен id профиля - все неподтверждённые заказы от этого человека.\n"
-    text += f"/confirmedorders [=user_id]: Выводит все подтверждённые заказы,\n если предоставлен id профиля - все подтверждённые заказы от этого человека.\n"
-    text += f"/listusers: Выводит краткую информацию о каждом профиле, зарегистрированом в боте.\n"
-    text += f"/userinfo <user_id>: Выводит информацию о конкретном профиле, а также id всех его заказов\n"
-    text += f"/orderinfo <order_id>: Выводит информацию о конкретном заказе.\n"
-    text += f"/deleteorder <order_id>: Удаляет заказ из системы.\n"
-    text += f"/setcomission <значение>: Задаёт значение фиксированной комиссии.\n"
-    text += f"/setexchange <валюта> <значение>: Задаёт курс к RUB.\n"
-    text += f"/viewexchange: Выдаёт информацию о валютах.\n"
-    text += f"/setkgcost <значение>: Задаёт цену доставки за 1 кг"
-    text += f"/viewparams: Выводит значения, используемые при расчёте цены (комиссия, курс, и т.д.)"
+    text += f"/confirmed_orders [=user_id]: Выводит все подтверждённые заказы,\n если предоставлен id профиля - все подтверждённые заказы от этого человека.\n"
+    text += f"/list_users: Выводит краткую информацию о каждом профиле, зарегистрированом в боте.\n"
+    text += f"/user_info <user_id>: Выводит информацию о конкретном профиле, а также id всех его заказов\n"
+    text += f"/order_info <order_id>: Выводит информацию о конкретном заказе.\n"
+    text += f"/delete_order <order_id>: Удаляет заказ из системы.\n"
+    text += f"/set_kgcost <значение>: Задаёт цену доставки за 1 кг\n"
+    text += f"/set_comission <значение>: Задаёт значение фиксированной комиссии.\n"
+    text += f"/set_exchange <валюта> <значение>: Задаёт курс к RUB.\n"
+    text += f"/set_exchange_fee <значение>: Задаёт задаёт процент премии (надбавки) к курсу.\n"
+    text += f"/view_exchange: Выдаёт информацию о валютах.\n"
+    text += f"/update_exchange: Обновляет курс валют на основе курса ЦБ + прибавляет {get_price_var('exchange_fee')}%\n"
+    text += f"/view_params: Выводит значения, используемые при расчёте цены (комиссия, курс, и т.д.)\n"
     text += f"/ban <user_id>: Банит пользователя.\n"
     text += f"/unban <user_id>: Разбанивает пользователя, также может понизить пользователя с уровня админа.\n"
     text += f"/promote <user_id>: Делает пользователя админом.\n"
     text += f"\n"
     text += f"Формулы расчёта стоимости:\n"
     text += f"Простая: ИТОГ = <цена> * <рассч. коэфф.> + <комиссия>\n"
-    text += f"Сложная: ИТОГ = ((<типовой вес> / 1000) * <цена за кг.>) + (<цена> * <рассч. коэфф.>) + <комиссия>"
+    text += f"Сложная: ИТОГ = ((<типовой вес> / 1000) * <цена за кг.>) + (<цена> * <рассч. коэфф.>) + <комиссия>\n"
     text += f"Выбранная формула: {'Сложная' if use_extended_formula else 'Простая'}"
     send_text(id, text)
 
@@ -841,7 +863,7 @@ def order_type(id):
 
 def send_faq(id):
     reply = json.dumps({'inline_keyboard': [
-            [{'text': 'ℹ️ Как заказать товар с Poizon', 'url': 'https://telegra.ph/Kak-oformit-zakaz-s-DEWU-Poizon-01-10'}],
+            [{'text': 'ℹ️ Как заказать товар с Poizon', 'url': 'https://telegra.ph/Kak-zakazat-tovar-s-Poizon-07-26'}],
         ]
     })
     mes_params = {
@@ -922,6 +944,15 @@ def send_parameterchange_info(id, curr, param):
     mes_params = {
         "chat_id": id,
         "text": f"⏩ Курс {curr}/₽ изменён на `{param}`",
+        "parse_mode": "markdown"
+    }
+    resp = requests.post(url, params=mes_params)
+    return resp.content
+
+def send_exchange_fee_info(id, param):
+    mes_params = {
+        "chat_id": id,
+        "text": f"⏩ Процент премии изменён на `{param}`\n",
         "parse_mode": "markdown"
     }
     resp = requests.post(url, params=mes_params)
@@ -1063,9 +1094,15 @@ def handle_command(mess):
         if user["lvl"] == "admin":
             if mess["text"] == "/help":
                 command_answer = send_help(chat_id)
-            if mess["text"] == "/viewexchange":
+            if mess["text"] == "/view_exchange":
                 command_answer = send_currency_overview(chat_id)
-            if mess["text"].startswith('/deleteorder'):
+            if mess["text"] == "/view_params":
+                command_answer = send_params_overview(chat_id)
+            if mess["text"] == '/update_exchange':
+                update_currency_from_cbr()
+                command_answer = send_text(chat_id, "Курс валют обновлён")
+                command_answer = send_currency_overview(chat_id)
+            if mess["text"].startswith('/delete_order'):
                 mess_split = mess["text"].split()
                 if len(mess_split) < 2:
                     command_answer = send_text(chat_id, "Ошибка при обработке команды")
@@ -1096,7 +1133,7 @@ def handle_command(mess):
                         db_ban_user(lookup_id)
                         send_text(lookup_id, "Вас успешно разбанили.")
                         command_answer = send_text(chat_id, f"Пользователь {lookup_id} разбанен")
-            if mess["text"].startswith('/userinfo'):
+            if mess["text"].startswith('/user_info'):
                 mess_split = mess["text"].split()
                 if len(mess_split) < 2:
                     send_text(chat_id, "Ошибка при обработке команды")
@@ -1114,13 +1151,13 @@ def handle_command(mess):
                         db_promote_user(lookup_id)
                         send_text(lookup_id, "Вас успешно разбанили.")
                         command_answer = send_text(chat_id, f"Пользователь {lookup_id} забанен")
-            if mess["text"].startswith('/orderinfo'):
+            if mess["text"].startswith('/order_info'):
                 mess_split = mess["text"].split()
                 if len(mess_split) < 2:
                     send_text(chat_id, "Ошибка при обработке команды")
                 lookup_id = mess_split[1].strip()
                 display_order(chat_id, lookup_id)
-            if mess["text"] == "/listusers":
+            if mess["text"] == "/list_users":
                 ausers = fetch_all_users()
                 if ausers is not None:
                     command_answer = send_text(chat_id, "⤵️ Список всех пользователей:")
@@ -1141,7 +1178,7 @@ def handle_command(mess):
                         display_order(chat_id, order)
                 else:
                     command_answer = send_text(chat_id, "🙂 Нет заказов в модерации")
-            if mess["text"].startswith("/confirmedorders"):
+            if mess["text"].startswith("/confirmed_orders"):
                 mess_split = mess["text"].strip().split()
                 if len(mess_split) == 1:
                     user_id = None
@@ -1154,7 +1191,7 @@ def handle_command(mess):
                         display_order(chat_id, order)
                 else:
                     command_answer = send_text(chat_id, "🙂 Нет активных заказов")
-            elif mess["text"].startswith("/setexchange"):
+            elif mess["text"].startswith("/set_exchange "):
                 mess_split = tuple(elem.strip() for elem in mess["text"].split())
                 sup_currencies = get_supported_currencies()
                 if len(mess_split) <= 2:
@@ -1170,9 +1207,11 @@ def handle_command(mess):
                         command_answer = send_parameterchange_info(chat_id, mess_split[1], change)
                 else:
                     command_answer = send_text(chat_id, "Ошибка в вызове команды.")
-            elif mess["text"].startswith("/setkgcost"):
-                if check_regex('\/setkgcost {1}(\d{1,100})+(\.\d{1,100})?$', mess["text"]):
-                    mess_split = mess["text"].split(" ")
+            elif mess["text"].startswith("/set_kgcost"):
+                if check_regex('\/set_kgcost {1}(\d{1,100})+(\.\d{1,100})?$', mess["text"]):
+                    mess_split = tuple(elem.strip() for elem in mess["text"].split())
+                    if len(mess_split) <= 1:
+                        return send_text(chat_id, "Ошибка в вызове команды.")
                     kg_cost = float(mess_split[1])
                     try:
                         set_price_var("commission", kg_cost)
@@ -1182,8 +1221,8 @@ def handle_command(mess):
                         command_answer = send_parameterkgcost_info(chat_id, kg_cost)
                 else:
                     command_answer = send_text(chat_id, "Ошибка в вызове команды.")
-            elif mess["text"].startswith("/setcommission"):
-                if check_regex('\/setcommission {1}(\d{1,100})+(\.\d{1,100})?$', mess["text"]):
+            elif mess["text"].startswith("/set_commission"):
+                if check_regex('\/set_commission {1}(\d{1,100})+(\.\d{1,100})?$', mess["text"]):
                     mess_split = mess["text"].split(" ")
                     commission = float(mess_split[1])
                     try:
@@ -1192,6 +1231,21 @@ def handle_command(mess):
                         command_answer = send_text(chat_id, f"Ошибка: {str(e)}")
                     else:
                         command_answer = send_parametercommission_info(chat_id, commission)
+                else:
+                    command_answer = send_text(chat_id, "Ошибка в вызове команды.")
+            elif mess["text"].startswith("/set_exchange_fee"):
+                mess_split = tuple(elem.strip() for elem in mess["text"].split())
+                if len(mess_split) <= 1:
+                    return send_text(chat_id, "Ошибка в вызове команды.")
+                if check_regex('\/set_exchange_fee {1}(\d{1,100})+(\.\d{1,100})?$', mess["text"]):
+                    exchange_fee = float(mess_split[1])
+                    try:
+                        set_price_var("exchange_fee", exchange_fee)
+                    except Exception as e:
+                        command_answer = send_text(chat_id, f"Ошибка: {str(e)}")
+                    else:
+                        command_answer = send_exchange_fee_info(chat_id, exchange_fee)
+                        update_currency_from_cbr()
                 else:
                     command_answer = send_text(chat_id, "Ошибка в вызове команды.")
     print(f"probably response from telegram api: {command_answer}")
