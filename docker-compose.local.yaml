@@ -40,7 +40,7 @@ services:
     restart: always
 
   app:
-    image: kalenghil/monvesium-bot:testing-local
+    image: kalenghil/monvesium-bot:testing
     container_name: poizonbot
     env_file:
       - .env

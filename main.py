@@ -31,6 +31,7 @@ def prepare_minio(client: minio.Minio) -> None:
         client.make_bucket(config_bucket)
 
 
+# Innitializing components
 app = FastAPI()
 security = HTTPBasic()
 minio_client = minio.Minio(
@@ -504,7 +505,7 @@ def display_menu(id):
 
 def send_currency_prompt(id):
     currencies = json.loads(get_currency_config_data())
-    reply = json.dumps({'inline_keyboard': [list({'text': f"{currencies[curr]['emoji']}{curr} {currencies[curr]['sym']}", 'callback_data': curr } for curr in currencies)]})
+    reply = json.dumps({'inline_keyboard': [list({'text': f"{curr} {currencies[curr]['sym']}", 'callback_data': curr } for curr in currencies)]})
     mes_params = {
     "chat_id": id,
     "text": "👀 Выберите нужную валюту:",
@@ -568,7 +569,8 @@ def send_orderprice_prompt(id, curr_name: str):
 
 def main_send_orderprice_prompt(id, curr_name):
     reply = json.dumps({'inline_keyboard': [
-            [{'text': '❌ Отменить заказ', 'callback_data': 'mainmenu'}]
+            [{'text': 'ℹ️ Как узнать цену своего размера?', 'url': 'https://telegra.ph/Kak-uznat-stoimost-tovara-nuzhnogo-razmera-07-25'}],
+            [{'text': '❌ Отменить заказ', 'callback_data': 'mainmenu'}],
         ]
     })
     currency = json.loads(get_currency_config_data())[curr_name]
@@ -733,7 +735,7 @@ def send_ordernumber_prompt(id):
 
 def send_orderlink_prompt(id):
     reply = json.dumps({'inline_keyboard': [
-            [{'text': 'Как скопировать ссылку на товар?', 'url': 'https://telegra.ph/Kak-oformit-zakaz-s-DEWU-Poizon-01-10#%D0%9A%D0%B0%D0%BA-%D0%BF%D0%BE%D0%B4%D0%B5%D0%BB%D0%B8%D1%82%D1%8C%D1%81%D1%8F-%D1%81%D1%81%D1%8B%D0%BB%D0%BA%D0%BE%D0%B9-%D0%BD%D0%B0-%D1%82%D0%BE%D0%B2%D0%B0%D1%80'}],
+            [{'text': 'Как скопировать ссылку на товар?', 'url': 'https://telegra.ph/Kak-zakazat-tovar-s-Poizon-07-26'}],
             [{'text': '❌ Отменить заказ', 'callback_data': 'mainmenu'}]
         ]
     })
@@ -772,7 +774,8 @@ def send_help(id: str):
     send_text(id, text)
 
 def generate_order_info(order: dict[str, Any]) -> str:
-    text = f"*Тип заказа:* {order['data']['product_type']}\n"
+    text = f"*Id покупателя*: `{order['user_id']}`"
+    text += f"*Тип заказа:* {order['data']['product_type']}\n"
     text += f"*Ссылка на товар:* {str(order['data']['product_link'])}\n"
     text += f"*Размер товара:* {order['data']['product_size']}\n"
     text += f"*Стоимость заказа (в рублях):* {order['data']['price']}₽\n"
@@ -801,7 +804,7 @@ def send_admin_prompt(id, order):
     }
     resp = requests.post(url, params=mes_params)
     if not resp.ok:
-        text += f"В связи с настройками приватности пользователя, сгенерировать ссылку на профиль {order['user_id']} невозможно\n"
+        text += f"В связи с настройками приватности пользователя, сгенерировать ссылку на профиль `{order['user_id']}` невозможно\n"
         reply = json.dumps({'inline_keyboard': [
                 [{'text': '✔️ Подтвердить', 'callback_data': f"confirm{order['_id']}"}, {'text': '❌ Отменить', 'callback_data': f"decline{order['_id']}"}],
             ]
@@ -906,7 +909,8 @@ def send_user_info(id: str, lookup_id: str):
     for order in user_orders:
         text += f"`{order['_id']}`\n"
 
-    send_text(id, text)
+    resp = send_text(id, text)
+    return resp
 
 def send_contact(id):
     reply = json.dumps({'inline_keyboard': [
@@ -923,10 +927,11 @@ def send_contact(id):
 
 def display_order(id, order):
     reply = json.dumps({'inline_keyboard': [
-            [{'text': '👤 Cвязь с клиентом', 'url': f"tg://user?id={order['user_id']}"}]
+            [{'text': '👤 Cвязь с клиентом', 'url': f"tg://user?id={id}"}]
         ]
     })
-    text = generate_order_info(order)
+    order_dict = get_order(order)
+    text = generate_order_info(order_dict)
     mes_params = {
         "chat_id": id,
         "text": text,
@@ -935,8 +940,13 @@ def display_order(id, order):
     }
     resp = requests.post(url, params=mes_params)
     if not resp.ok:
-        text += f"В связи с настройками приватности пользователя, сгенерировать ссылку на профиль `{order['user_id']}` невозможно\n"
-        resp = send_text(id, text)
+        text += f"В связи с настройками приватности пользователя, сгенерировать ссылку на профиль `{id}` невозможно\n"
+        mes_params = {
+        "chat_id": id,
+        "text": text,
+        "parse_mode": "markdown",
+        }
+        resp = requests.post(url, params=mes_params)
     return resp.content
 
 
@@ -1263,7 +1273,7 @@ def handle_number(mess):
                 final_price = int(order_formula(userdata["order"]))
             except Exception as e:
                 resp = (send_text(chat_id, "Ошибка при расчете итоговой стоимости. Попробуйте еще раз"),
-                        send_orderprice_prompt(chat_id, userdata["currency"]))
+                send_orderprice_prompt(chat_id, userdata["currency"]))
             else:
                 send_text(chat_id, f"Итоговая стоимость в рублях: `{final_price}₽`\n  Цена без учета доставки по РФ.")
                 resp = send_orderconfirm_prompt(chat_id)
@@ -1292,8 +1302,8 @@ def handle_input(mess):
     curr_state = get_user(chat_id)["state"]
     userdata = get_userfile(chat_id)
     if curr_state == "CALC_PRICE":
-        if(check_regex("([1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9])", mess["text"])):
-            modify_userfile(chat_id, int(mess["text"]), "price", "calc")
+        if(check_regex("(\d{1,12})(\.\d{1,3})?$", mess["text"])):
+            modify_userfile(chat_id, int(float(mess["text"])), "price", "calc")
             userdata = get_userfile(chat_id)
             try:
                 resp = send_ordercost_prompt(chat_id, order_formula(userdata["calc"]))
@@ -1322,8 +1332,8 @@ def handle_input(mess):
         else:
             resp = (send_text(chat_id, "✖️ Неверное значение. Попробуйте еще раз."), send_ordersize_prompt(chat_id))
     elif curr_state == "ORDER_PRICE":
-        if(check_regex("([1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9])", mess["text"])):
-            modify_userfile(chat_id, int(mess['text']), "price", "order")
+        if(check_regex("(\d{1,100})+(\.\d{1,100})?$", mess["text"])):
+            modify_userfile(chat_id, int(float(mess['text'])), "price", "order")
             userdata = get_userfile(chat_id)
             price = int(order_formula(userdata['order']))
             send_ordercost_prompt(chat_id, price, is_calc=False)
