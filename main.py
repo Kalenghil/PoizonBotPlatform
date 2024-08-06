@@ -132,14 +132,18 @@ def store_config_data(filename, raw_json: str) -> None:
 
 
 # ================================= PRICE CONFIG ===================================
+default_price_config = {
+        "kg_cost":       750.0,
+        "commission":    700,
+        "exchange_fee":  3.0,
+        "transfer_fee":  1.0,
+        "package_fee":   3.0}
+
+def reset_price_config():
+    return store_config_data(price_config_path, json.dumps(default_price_config))
 
 def read_price_config_data():
-    default_price_config = {
-        "kg_cost": 750.0,
-        "commission": 700,
-        "exchange_fee": 3.0
-    }
-    return read_config_data(price_config_path, default_price_config)
+   return read_config_data(price_config_path, default_price_config)
 
 def get_price_var(key: str) -> float | None:
     price_config = json.loads(read_price_config_data())
@@ -149,11 +153,11 @@ def get_price_var(key: str) -> float | None:
         return None
 
 
-def get_price_vars(*keys: str) -> tuple | None:
+def get_price_vars(*keys: str) -> dict[str, float] | None:
     price_config = json.loads(read_price_config_data())
     if any(key not in price_config for key in keys):
         return None
-    return tuple(price_config[key] for key in keys)
+    return {key: price_config[key] for key in keys}
 
 
 def set_price_var(key: str, value: float):
@@ -247,13 +251,18 @@ def update_currency_from_cbr():
 
 def order_formula(params: dict[str, Any]):
     currency, price, type = params['currency'], params['price'], params['type']
-    price_vars = get_price_vars('kg_cost', 'commission')
+    price_vars = get_price_vars('kg_cost', 'commission', 'package_fee', 'transfer_fee')
     currency_exchg_rate = get_currency_rate(currency)
+    usd_exchange_rate = get_currency_rate("USD")
     if price_vars is None or currency_exchg_rate is None:
         raise KeyError
-    commission, kg_cost = price_vars
+    commission, kg_cost, transfer_fee, package_fee = price_vars['commission'], price_vars['kg_cost'], price_vars['transfer_fee'], price_vars['package_fee'] 
     if use_extended_formula:
-        final_price = commission+((item_weight[type]/1000)*kg_cost)+(price*currency_exchg_rate)
+        final_price = (commission +
+                       ((item_weight[type]/1000)*kg_cost) +
+                       (price*currency_exchg_rate) +
+                       transfer_fee * usd_exchange_rate +
+                       package_fee * usd_exchange_rate)
     else:
         final_price = price * currency_exchg_rate + commission
     return final_price
@@ -582,6 +591,34 @@ def main_send_orderprice_prompt(id, curr_name):
     resp = requests.post(url, params=mes_params)
     return resp.content
 
+
+def generate_price_info(user_id, final_price, is_calc=True) -> str:
+    userdata = get_userfile(user_id)
+    if is_calc:
+        userdata = userdata['calc']
+    else:
+        userdata = userdata['order']
+
+    price_envs = get_price_vars('kg_cost', 'commission', 'transfer_fee', 'package_fee')
+    weight_fee = price_envs['kg_cost']
+    commission = price_envs['commission']
+    transfer_fee = price_envs['transfer_fee']
+    package_fee = price_envs['package_fee']
+    price = userdata['price']
+    weight = item_weight[userdata['type']]
+    text = generate_price_info_string(price, weight_fee, weight, commission, package_fee, transfer_fee, final_price)
+
+    return text
+
+def generate_price_info_string(price, weight_fee, weight, commission, package_fee, transfer_fee, final_price) -> str:
+    if use_extended_formula:
+        text = f"{price}₽ + доставка в Китае: {weight}кг. * {weight_fee}₽ = {weight*weight_fee}₽ + упаковка: {package_fee}$ + пересылка {transfer_fee}$ + коммиссия {commission}₽ \n"
+    else:
+        text = f"{price}₽ + коммиссия {commission}₽"
+    text += f"Итоговая стоимость в рублях: {final_price}₽\n"
+    return text
+    
+
 def send_ordercost_prompt(id, price, is_calc=True):
     reply = json.dumps({'inline_keyboard': [
             [{'text': '↩️ Главное меню', 'callback_data': 'mainmenu'}]
@@ -597,7 +634,7 @@ def send_ordercost_prompt(id, price, is_calc=True):
     else:
         mes_params = {
             "chat_id": id,
-            "text": f"Итоговая стоимость в рублях: `{int(price)}₽`\n Цена без учета доставки по РФ.",
+            "text": generate_price_info(id, int(price), is_calc),
             "parse_mode": "markdown",
         }
     resp = requests.post(url, params=mes_params)
@@ -758,6 +795,8 @@ def send_help(id: str):
     text += f"/delete_order <order_id>: Удаляет заказ из системы.\n"
     text += f"/set_kgcost <значение>: Задаёт цену доставки за 1 кг\n"
     text += f"/set_comission <значение>: Задаёт значение фиксированной комиссии.\n"
+    text += f"/set_package_fee <значение>: Задаёт значения сбора за упаковку\n"
+    text += f"/set_transfer_fee <значение>: Задаёт сбор за перевозку\n"
     text += f"/set_exchange <валюта> <значение>: Задаёт курс к RUB.\n"
     text += f"/set_exchange_fee <значение>: Задаёт задаёт процент премии (надбавки) к курсу.\n"
     text += f"/view_exchange: Выдаёт информацию о валютах.\n"
