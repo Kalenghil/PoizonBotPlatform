@@ -81,6 +81,16 @@ user_json_model = {
         "price": None
     }
 }
+item_name = {
+    "sneaker": "Кроссовки",
+    "boot": "Обувь",
+    "winterJacket": "Пуховик",
+    "jacket": "Верхняя одежда",
+    "cotton": "Одежда",
+    "laptop": "Ноутбук",
+    "smartphone": "Смартфон",
+    "accessory": "Аксессуар/Парфюмерия"
+}
 
 item_weight = {
     "sneaker": 2000,
@@ -194,7 +204,7 @@ def needs_to_update():
         yesterday = datetime.today() - timedelta(days=1)
         yesterday = yesterday.date().isoformat()
         minio_put_file(last_currency_update_path, config_bucket, yesterday)
-    
+
     last_update_iso = minio_get_config(last_currency_update_path)
     last_update = datetime.fromisoformat(last_update_iso)
     if last_update.date() != datetime.today().date():
@@ -205,7 +215,7 @@ def needs_to_update():
 def get_currency_config_data():
     if needs_to_update():
         update_currency_from_cbr()
-    
+
     return _read_currency_config_data()
 
 def get_currency_rate(currency_name: str) -> float | None:
@@ -237,16 +247,16 @@ def round(smth: float):
 def update_currency_from_cbr():
     resp = requests.get("https://www.cbr-xml-daily.ru/latest.js").json()
     cbr_rates = resp['rates']
-       
+
     currency_conf = json.loads(_read_currency_config_data())
     exchg_percent = get_price_var('exchange_fee')
     for curr in currency_conf:
         if curr == 'RUB':
             continue
-        
+
         currency_conf[curr]['rate'] = round((1 / cbr_rates[curr]) * (1. + exchg_percent / 100))
-    store_currency_config(json.dumps(currency_conf))    
-    minio_put_file(last_currency_update_path, config_bucket, resp['date'])
+    store_currency_config(json.dumps(currency_conf))
+    minio_put_file(last_currency_update_path, config_bucket, datetime.today().date().isoformat())
 
 
 def order_formula(params: dict[str, Any]):
@@ -256,7 +266,7 @@ def order_formula(params: dict[str, Any]):
     usd_exchange_rate = get_currency_rate("USD")
     if price_vars is None or currency_exchg_rate is None:
         raise KeyError
-    commission, kg_cost, transfer_fee, package_fee = price_vars['commission'], price_vars['kg_cost'], price_vars['transfer_fee'], price_vars['package_fee'] 
+    commission, kg_cost, transfer_fee, package_fee = price_vars['commission'], price_vars['kg_cost'], price_vars['transfer_fee'], price_vars['package_fee']
     if use_extended_formula:
         final_price = (commission +
                        ((item_weight[type]/1000)*kg_cost) +
@@ -460,7 +470,7 @@ def fetch_all_users():
     users = db_get_all_users()
     return users if users else None
 
-def fetch_orders(user_id: str = None):
+def fetch_orders(user_id: str | None = None):
     orders = db_get_all_orders(user_id)
     return orders if orders else None
 
@@ -559,7 +569,7 @@ def send_params_overview(id):
     }
     resp = requests.post(url, params=mes_params)
     return resp.content
-    
+
 
 
 def send_orderprice_prompt(id, curr_name: str):
@@ -606,18 +616,31 @@ def generate_price_info(user_id, final_price, is_calc=True) -> str:
     package_fee = price_envs['package_fee']
     price = userdata['price']
     weight = item_weight[userdata['type']]
-    text = generate_price_info_string(price, weight_fee, weight, commission, package_fee, transfer_fee, final_price)
-
+    name = item_name[userdata['type']]
+    text = generate_price_info_string(
+                    price=price,
+                    weight_fee=weight_fee,
+                    name=name,
+                    weight=weight,
+                    commission=commission,
+                    package_fee=package_fee,
+                    transfer_fee=transfer_fee,
+                    final_price=final_price)
     return text
 
-def generate_price_info_string(price, weight_fee, weight, commission, package_fee, transfer_fee, final_price) -> str:
+def generate_price_info_string(price, weight_fee, name, weight, commission, package_fee, transfer_fee, final_price) -> str:
+    text = f"Итоговая стоимость в рублях: {final_price}₽\n\n"
+
+    text += f"Расчёт доставки:\n"
+    text += f"Типовой вес выбранной категории * тариф + упаковка + доставка СДЕК + комиссия \n"
+
+    text += "Итог: "
     if use_extended_formula:
-        text = f"{price}₽ + доставка в Китае: {weight}кг. * {weight_fee}₽ = {weight*weight_fee}₽ + упаковка: {package_fee}$ + пересылка {transfer_fee}$ + коммиссия {commission}₽ \n"
+        text += f"{price}₽ + {weight}кг. * {weight_fee}₽ = {weight*weight_fee}₽ + {package_fee}$ + {transfer_fee}$ + коммиссия {commission}₽ \n"
     else:
-        text = f"{price}₽ + коммиссия {commission}₽"
-    text += f"Итоговая стоимость в рублях: {final_price}₽\n"
+        text += f"{price}₽ + коммиссия {commission}₽"
     return text
-    
+
 
 def send_ordercost_prompt(id, price, is_calc=True):
     reply = json.dumps({'inline_keyboard': [
@@ -793,7 +816,7 @@ def send_help(id: str):
     text += f"/user_info <user_id>: Выводит информацию о конкретном профиле, а также id всех его заказов\n"
     text += f"/order_info <order_id>: Выводит информацию о конкретном заказе.\n"
     text += f"/delete_order <order_id>: Удаляет заказ из системы.\n"
-    text += f"/set_kgcost <значение>: Задаёт цену доставки за 1 кг\n"
+    text += f"/lset_kgcost <значение>: Задаёт цену доставки за 1 кг\n"
     text += f"/set_comission <значение>: Задаёт значение фиксированной комиссии.\n"
     text += f"/set_package_fee <значение>: Задаёт значения сбора за упаковку\n"
     text += f"/set_transfer_fee <значение>: Задаёт сбор за перевозку\n"
@@ -905,12 +928,18 @@ def order_type(id):
 
 def send_faq(id):
     reply = json.dumps({'inline_keyboard': [
-            [{'text': 'ℹ️ Как заказать товар с Poizon', 'url': 'https://telegra.ph/Kak-zakazat-tovar-s-Poizon-07-26'}],
+            [{'text': '1. Политика Монвезиум', 'url': 'https://t.me/monvesium/455'}],
+            [{'text': '2. Откуда доставляем', 'url': 'https://t.me/monvesium/457?single'}],
+            [{'text': '3. Сроки Доставки', 'url': 'https://t.me/monvesium/477?single'}],
+            [{'text': '4. Кто мы?', 'url': 'https://t.me/monvesium/477?single'}],
+            [{'text': '5. Оплата', 'url': 'https://t.me/monvesium/477?single'}],
+            [{'text': ''}],
+            [{'text': 'Основные ссылки', 'url': 'https://t.me/linkmnvs'}, {'text': 'Наши отзывы (https://t.me/monvesium_feedback)', 'url': 'https://t.me/monvesium_feedback'}],
         ]
     })
     mes_params = {
     "chat_id": id,
-    "text": "Инструкции по работе с каждой площадкой:",
+    "text": "Инструкции по работе:",
     "reply_markup": reply
     }
     resp = requests.post(url, params=mes_params)
@@ -982,8 +1011,7 @@ def display_order(id, order):
         text += f"В связи с настройками приватности пользователя, сгенерировать ссылку на профиль `{id}` невозможно\n"
         mes_params = {
         "chat_id": id,
-        "text": text,
-        "parse_mode": "markdown",
+        "text": escape_markdown(text),
         }
         resp = requests.post(url, params=mes_params)
     return resp.content
@@ -1246,7 +1274,7 @@ def handle_command(mess):
                 if len(mess_split) <= 2:
                     command_answer = send_text(chat_id, "Ошибка в вызове команды.")
                     return
-                if check_regex('(\d{1,200})+(\.\d{1,100})?', mess_split[2]) and mess_split[1] in sup_currencies:
+                if check_regex(r'(\d{1,200})+(\.\d{1,100})?', mess_split[2]) and mess_split[1] in sup_currencies:
                     change = float(mess_split[2])
                     try:
                         set_currency_rate(mess_split[1], change)
@@ -1257,7 +1285,7 @@ def handle_command(mess):
                 else:
                     command_answer = send_text(chat_id, "Ошибка в вызове команды.")
             elif mess["text"].startswith("/set_kgcost"):
-                if check_regex('\/set_kgcost {1}(\d{1,100})+(\.\d{1,100})?$', mess["text"]):
+                if check_regex(r'\/set_kgcost {1}(\d{1,100})+(\.\d{1,100})?$', mess["text"]):
                     mess_split = tuple(elem.strip() for elem in mess["text"].split())
                     if len(mess_split) <= 1:
                         return send_text(chat_id, "Ошибка в вызове команды.")
